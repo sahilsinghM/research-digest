@@ -37,7 +37,10 @@ class FakeRun:
         return [c for c in self.calls if "triage" not in c[1].lower() and "one concept" not in c[1].lower()]
 
 
-def P(id, area="finance", abstract="abs"):
+LONG = "The authors study the question with a stated design and report their main findings in detail. " * 2
+
+
+def P(id, area="finance", abstract=LONG):
     return Paper(id=id, title="Title " + id, abstract=abstract, source="s", area=area, journal="J",
                  url="https://e.com/" + id, published="2026-10-12", kind="peer")
 
@@ -109,13 +112,13 @@ def test_already_sent_papers_are_skipped():
 
 
 def test_medical_paper_without_keywords_is_dropped_before_any_model_call():
-    sent, fake, _ = go([P("m", "medical", abstract="Unrelated surgery technique")])
+    sent, fake, _ = go([P("m", "medical", abstract="Unrelated surgery technique. " * 6)])
     assert fake.calls == [] and len(sent) == 1 and "Nothing worth" in sent[0]
 
 
-def test_empty_abstract_is_handled():
-    sent, _, _ = go([P("a", abstract="")])
-    assert len(sent) == 3
+def test_paper_without_a_real_abstract_is_dropped_before_any_model_call():
+    sent, fake, _ = go([P("news", abstract=""), P("stub", abstract="Short teaser.")])
+    assert fake.calls == [] and len(sent) == 1 and "Nothing worth" in sent[0]
 
 
 def test_dry_run_writes_no_state():

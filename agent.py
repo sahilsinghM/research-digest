@@ -25,7 +25,7 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
     r, m = cfg["run"], cfg["models"]
     since = store.since(r["lookback_days_first_run"], now)
     papers, failed = fetch(cfg, since.date(), now.date())
-    papers = prefilter(store.new_only(papers), cfg["keywords"]["medical"])
+    papers = prefilter(store.new_only(papers), cfg["keywords"]["medical"], r["min_abstract_chars"])
     notes = [f"sources failed: {', '.join(failed)}"] if failed else []
 
     ask = analyst.CallCap(ask_model, r["max_calls_per_run"])

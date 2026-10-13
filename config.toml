@@ -2,6 +2,7 @@
 lookback_days_first_run = 2
 max_papers = 8
 min_score = 5
+min_abstract_chars = 100
 triage_batch = 25
 max_calls_per_run = 60
 
