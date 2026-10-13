@@ -2,7 +2,7 @@
 title: Idempotent, failure-safe runs
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Idempotent, failure-safe runs
@@ -17,13 +17,13 @@ Make unattended runs safe to retry. Each paper is marked sent only after Telegra
 
 ## Acceptance criteria
 
-- [ ] Happy path marks every sent paper and records last-success once
-- [ ] A send failure midway leaves earlier papers marked sent, later ones unmarked, and last-success not advanced (test: re-run sends only the remaining papers)
-- [ ] A usage-limit error during triage or reading sends the limit notice and does not advance last-success; already completed papers are still delivered and marked
-- [ ] A second concurrent run exits quietly without doing work
-- [ ] Any unexpected crash sends a failure notice containing the error type and a short message, never secrets
-- [ ] First run with no history uses the configured two-day lookback; later runs use last-success
-- [ ] Full test suite passes
+- [x] Happy path marks every sent paper and records last-success once
+- [x] A send failure midway leaves earlier papers marked sent, later ones unmarked, and last-success not advanced (test: re-run sends only the remaining papers)
+- [x] A usage-limit error during triage or reading sends the limit notice and does not advance last-success; already completed papers are still delivered and marked
+- [x] A second concurrent run exits quietly without doing work
+- [x] Any unexpected crash sends a failure notice containing the error type and a short message, never secrets
+- [x] First run with no history uses the configured two-day lookback; later runs use last-success
+- [x] Full test suite passes
 
 ## Blocked by
 

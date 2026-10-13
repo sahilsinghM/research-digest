@@ -2,7 +2,8 @@ import json
 import tomllib
 from datetime import datetime, timedelta, timezone
 
-from agent import run
+from agent import acquire_lock, guarded, run
+from runner import UsageLimitReached
 from sources import Paper
 from store import Store
 
@@ -16,11 +17,14 @@ CONCEPT = json.dumps({"name": "Drawdown", "explain": "how far a portfolio falls"
 class FakeRun:
     """Answers triage calls from `scores` (default 9) and deep-read calls with ANALYSIS (or queued replies)."""
 
-    def __init__(self, *replies, scores=None, concept=CONCEPT):
+    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None):
         self.replies, self.scores, self.concept, self.calls = list(replies), scores or {}, concept, []
+        self.limit_on_call = limit_on_call  # 1-based index of the call that hits the usage limit
 
     def __call__(self, model, system, user):
         self.calls.append((model, system, user))
+        if self.limit_on_call == len(self.calls):
+            raise UsageLimitReached("You've hit your session limit")
         if "triage" in system.lower():
             return json.dumps([{"id": r["id"], "score": self.scores.get(r["id"], 9)} for r in json.loads(user)])
         if "one concept" in system.lower():
@@ -42,10 +46,10 @@ def fetch_of(*papers, failed=()):
     return lambda cfg, since, today: (list(papers), list(failed))
 
 
-def go(papers, fake=None, store=None, failed=()):
+def go(papers, fake=None, store=None, failed=(), dry_run=False):
     sent, fake = [], fake or FakeRun()
     store = store or Store(":memory:")
-    run(CFG, "profile", store, fake, fetch_of(*papers, failed=failed), sent.append, NOW)
+    run(CFG, "profile", store, fake, fetch_of(*papers, failed=failed), sent.append, NOW, dry_run=dry_run)
     return sent, fake, store
 
 
@@ -117,14 +121,12 @@ def test_empty_abstract_is_handled():
 def test_dry_run_writes_no_state():
     store = Store(":memory:")
     papers = [P("a")]
-    go(papers, store=store)
+    go(papers, store=store, dry_run=True)
     assert store.new_only(papers) == papers
     assert store.since(2, NOW) == NOW - timedelta(days=2)
 
 
-def test_main_stops_before_fetching_when_login_check_fails(monkeypatch):
-    import pytest
-
+def test_main_stops_before_fetching_when_login_check_fails(monkeypatch, capsys):
     import agent
     import runner
     import sources
@@ -137,8 +139,8 @@ def test_main_stops_before_fetching_when_login_check_fails(monkeypatch):
 
     monkeypatch.setattr(runner, "check_login", not_logged_in)
     monkeypatch.setattr(sources, "fetch_all", must_not_fetch)
-    with pytest.raises(runner.RunnerError, match="not logged in"):
-        agent.main(["--dry-run"])
+    assert agent.main(["--dry-run"]) == 1
+    assert "not logged in" in capsys.readouterr().out
 
 
 def test_header_names_the_most_important_paper():
@@ -160,3 +162,123 @@ def test_failing_concept_call_still_delivers_the_papers():
 def test_no_concept_call_on_a_quiet_day():
     sent, fake, _ = go([P("a")], fake=FakeRun(scores={"a": 1}))
     assert len(sent) == 1 and all("one concept" not in s.lower() for _, s, _ in fake.calls)
+
+
+# ---- issue 06: idempotent, failure-safe runs ----
+
+def test_real_run_marks_every_sent_paper_and_records_success():
+    store = Store(":memory:")
+    papers = [P("a"), P("b", "science")]
+    go(papers, store=store)
+    assert store.new_only(papers) == []
+    assert store.since(2, NOW + timedelta(days=9)) == NOW
+
+
+def test_rerunning_after_success_sends_no_paper_twice():
+    store = Store(":memory:")
+    go([P("a")], store=store)
+    sent, _, _ = go([P("a")], store=store)
+    assert len(sent) == 1 and "Nothing worth" in sent[0]
+
+
+def test_midway_send_failure_keeps_delivered_papers_marked_and_does_not_advance_last_success():
+    import pytest
+    store = Store(":memory:")
+    papers = [P("a"), P("b", "science")]
+
+    def flaky(text):
+        if "Title b" in text:
+            raise RuntimeError("telegram down")
+
+    with pytest.raises(RuntimeError):
+        run(CFG, "profile", store, FakeRun(scores={"a": 9, "b": 8}), fetch_of(*papers), flaky, NOW)
+    assert [p.id for p in store.new_only(papers)] == ["b"]
+    assert store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_retry_after_midway_failure_sends_only_the_remaining_paper():
+    store = Store(":memory:")
+    papers = [P("a"), P("b", "science")]
+
+    def flaky(text):
+        if "Title b" in text:
+            raise RuntimeError("telegram down")
+
+    try:
+        run(CFG, "profile", store, FakeRun(scores={"a": 9, "b": 8}), fetch_of(*papers), flaky, NOW)
+    except RuntimeError:
+        pass
+    sent, _, _ = go(papers, store=store, fake=FakeRun(scores={"b": 8}))
+    assert any("Title b" in m for m in sent) and not any("Title a" in m for m in sent)
+
+
+def test_usage_limit_during_triage_sends_only_a_limit_notice_and_changes_no_state():
+    store = Store(":memory:")
+    papers = [P("a")]
+    sent, _, _ = go(papers, store=store, fake=FakeRun(limit_on_call=1))
+    assert len(sent) == 1 and "usage limit" in sent[0].lower() and "Nothing worth" not in sent[0]
+    assert store.new_only(papers) == papers and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_usage_limit_during_deep_read_delivers_completed_papers_then_a_notice_without_advancing():
+    store = Store(":memory:")
+    papers = [P("a"), P("b", "science")]
+    # calls: 1 triage, 2 read a, 3 read b (limit)
+    sent, _, _ = go(papers, store=store, fake=FakeRun(scores={"a": 9, "b": 8}, limit_on_call=3))
+    assert "Title a" in sent[1] and "usage limit" in sent[-1].lower()
+    assert [p.id for p in store.new_only(papers)] == ["b"]
+    assert store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_usage_limit_during_teach_still_delivers_all_papers_then_a_notice_without_advancing():
+    store = Store(":memory:")
+    papers = [P("a")]
+    sent, _, _ = go(papers, store=store, fake=FakeRun(limit_on_call=3))  # 1 triage, 2 read, 3 teach
+    assert "Title a" in sent[1] and "usage limit" in sent[-1].lower()
+    assert store.new_only(papers) == [] and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_first_run_fetches_from_the_lookback_then_from_last_success():
+    seen = []
+
+    def fetch(cfg, since, today):
+        seen.append(since)
+        return [], []
+
+    store = Store(":memory:")
+    run(CFG, "profile", store, FakeRun(), fetch, lambda t: None, NOW)
+    run(CFG, "profile", store, FakeRun(), fetch, lambda t: None, NOW + timedelta(hours=1))
+    assert seen == [(NOW - timedelta(days=2)).date(), NOW.date()]
+
+
+def test_guarded_success_returns_zero_and_sends_nothing():
+    sent = []
+    assert guarded(lambda: None, sent.append) == 0 and sent == []
+
+
+def test_guarded_crash_notifies_with_error_type_and_short_message_and_returns_one():
+    sent = []
+
+    def job():
+        raise ValueError("boom " + "x" * 1000)
+
+    assert guarded(job, sent.append) == 1
+    assert len(sent) == 1 and "ValueError" in sent[0] and "boom" in sent[0] and len(sent[0]) < 400
+
+
+def test_guarded_survives_a_failing_notifier():
+    def job():
+        raise ValueError("boom")
+
+    def broken(text):
+        raise OSError("telegram unreachable")
+
+    assert guarded(job, broken) == 1
+
+
+def test_lock_blocks_a_second_holder_until_released(tmp_path):
+    path = tmp_path / ".lock"
+    first = acquire_lock(path)
+    assert first is not None and acquire_lock(path) is None
+    first.close()
+    assert acquire_lock(path) is not None
