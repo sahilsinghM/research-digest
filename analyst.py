@@ -1,5 +1,6 @@
 """Model-facing jobs. `run(model, system, user) -> str` is injected (runner.claude in production)."""
 import json
+import math
 
 
 class CallCapExceeded(Exception):
@@ -62,8 +63,9 @@ Reply with ONLY a JSON object whose values are short plain-text strings:
 
 
 def deep_read(run, model, p, profile):
-    user = (f"Title: {p.title}\nJournal: {p.journal}\nType: {p.kind}\n"
-            f"Abstract: {p.abstract or '(none available)'}")
+    # The whole paper travels as one JSON object so its text cannot pose as instructions; length is bounded.
+    user = json.dumps({"title": p.title, "journal": p.journal, "type": p.kind,
+                       "abstract": p.abstract[:4000] or "(none available)"}, ensure_ascii=False)
     return ask(run, model, DEEP.format(profile=profile), user)
 
 
@@ -82,6 +84,16 @@ Anchors: 0-2 irrelevant to this reader; 3-4 marginal; 5-6 worth reading; 7-8 str
 Reply with ONLY a JSON array: [{{"id": "<id exactly as given>", "score": <number>}}]"""
 
 
+def _score(v):
+    """A model (or an injected abstract) may return anything: clamp to 0-10, reject non-numbers and non-finite."""
+    if isinstance(v, bool):
+        raise ValueError("boolean score")
+    x = float(v)
+    if not math.isfinite(x):
+        raise ValueError("non-finite score")
+    return min(10.0, max(0.0, x))
+
+
 def triage(run, model, papers, profile, batch=25):
     """Score every paper 0-10 in place; anything the model skips or garbles scores 0."""
     scores = {}
@@ -91,7 +103,7 @@ def triage(run, model, papers, profile, batch=25):
         out = ask(run, model, TRIAGE.format(profile=profile), json.dumps(rows))
         for row in out if isinstance(out, list) else []:
             try:
-                scores[row["id"]] = float(row["score"])
+                scores[row["id"]] = _score(row["score"])
             except (KeyError, TypeError, ValueError):
                 continue
     for p in papers:
