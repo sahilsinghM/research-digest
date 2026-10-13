@@ -166,3 +166,8 @@ def test_deep_read_bounds_abstract_length():
     run = FakeRun(json.dumps(ANALYSIS))
     deep_read(run, "m", T("a", abstract="x" * 50000), "p")
     assert len(json.loads(run.calls[0][2])["abstract"]) == 4000
+
+
+def test_deep_read_rejects_a_reply_that_is_valid_json_but_not_an_object():
+    for reply in ('[{"did": "x"}]', '"just a string"', "42"):
+        assert deep_read(FakeRun(reply, reply), "m", P(), "p") is None  # (2 replies: non-JSON text is retried once)

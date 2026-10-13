@@ -18,9 +18,13 @@ class UsageLimitReached(RunnerError):
 ISOLATION = ["--tools", "", "--setting-sources", "project,local", "--strict-mcp-config",
              "--disable-slash-commands", "--no-session-persistence", "--output-format", "json"]
 
-# Anything here would override the subscription login (or route billing elsewhere), so the child never sees it.
-STRIPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
-                "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
+# The child gets an allow-list, not a filtered copy: any credential or endpoint override (ANTHROPIC_API_KEY,
+# ANTHROPIC_BASE_URL, cloud-provider switches, ...) could bill something other than the subscription or send
+# the prompts elsewhere. Only what claude needs to run, plus the subscription token, passes through.
+SAFE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "TMPDIR", "TZ", "SHELL", "TERM",
+            "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
+            "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "no_proxy", "all_proxy"}
+SUBSCRIPTION_LOGINS = {"claude.ai", "oauth_token"}
 
 # ponytail: the exit code / JSON for a limit hit is undocumented; this matches the documented message text
 # ("You've hit your session limit", "...weekly limit"). Tighten after observing a real one (issue 07).
@@ -28,7 +32,7 @@ LIMIT = re.compile(r"hit your .{0,20}limit", re.I)
 
 
 def _env():
-    return {k: v for k, v in os.environ.items() if k not in STRIPPED_ENV}
+    return {k: v for k, v in os.environ.items() if k in SAFE_ENV or k.startswith(("LC_", "XDG_"))}
 
 
 def _run(args, user=None, timeout=300):
@@ -41,7 +45,14 @@ def _run(args, user=None, timeout=300):
 
 
 def claude(model, system, user, timeout=300):
-    p = _run(["-p", "--model", model, "--system-prompt", system, *ISOLATION], user, timeout)
+    # The system prompt embeds the owner's private profile; argv is readable by every local user, so it goes
+    # through a 0600 file in a private directory (separate from the empty working directory).
+    with tempfile.TemporaryDirectory() as private:
+        prompt_file = os.path.join(private, "system.txt")
+        fd = os.open(prompt_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(system)
+        p = _run(["-p", "--model", model, "--system-prompt-file", prompt_file, *ISOLATION], user, timeout)
     try:
         out = json.loads(p.stdout)
     except ValueError:
@@ -68,6 +79,6 @@ def check_login():
         status = None
     if p.returncode != 0 or not isinstance(status, dict) or not status.get("loggedIn"):
         raise RunnerError("Claude Code is not logged in: run `claude setup-token` and set CLAUDE_CODE_OAUTH_TOKEN")
-    if status.get("authMethod") == "api_key":
-        raise RunnerError("Claude Code is using an API key; this tool must use the subscription")
+    if status.get("authMethod") not in SUBSCRIPTION_LOGINS:
+        raise RunnerError(f"Claude Code login is {status.get('authMethod')!r}; this tool must use the subscription")
     return status.get("subscriptionType", "unknown")

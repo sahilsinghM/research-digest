@@ -3,7 +3,7 @@ import tomllib
 from datetime import datetime, timedelta, timezone
 
 from agent import acquire_lock, guarded, run
-from runner import UsageLimitReached
+from runner import RunnerError, UsageLimitReached
 from sources import Paper
 from store import Store
 
@@ -17,14 +17,17 @@ CONCEPT = json.dumps({"name": "Drawdown", "explain": "how far a portfolio falls"
 class FakeRun:
     """Answers triage calls from `scores` (default 9) and deep-read calls with ANALYSIS (or queued replies)."""
 
-    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None):
+    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None, error_on_call=None):
         self.replies, self.scores, self.concept, self.calls = list(replies), scores or {}, concept, []
         self.limit_on_call = limit_on_call  # 1-based index of the call that hits the usage limit
+        self.error_on_call = error_on_call  # 1-based index of a call that fails some other way
 
     def __call__(self, model, system, user):
         self.calls.append((model, system, user))
         if self.limit_on_call == len(self.calls):
             raise UsageLimitReached("You've hit your session limit")
+        if self.error_on_call == len(self.calls):
+            raise RunnerError("claude timed out after 300s")
         if "triage" in system.lower():
             return json.dumps([{"id": r["id"], "score": self.scores.get(r["id"], 9)} for r in json.loads(user)])
         if "one concept" in system.lower():
@@ -40,9 +43,9 @@ class FakeRun:
 LONG = "The authors study the question with a stated design and report their main findings in detail. " * 2
 
 
-def P(id, area="finance", abstract=LONG):
+def P(id, area="finance", abstract=LONG, published="2026-10-12"):
     return Paper(id=id, title="Title " + id, abstract=abstract, source="s", area=area, journal="J",
-                 url="https://e.com/" + id, published="2026-10-12", kind="peer")
+                 url="https://e.com/" + id, published=published, kind="peer")
 
 
 def fetch_of(*papers, failed=()):
@@ -85,13 +88,12 @@ def test_triage_uses_the_triage_model_and_deep_read_the_analyse_model():
     assert models[True] == CFG["models"]["triage"] and models[False] == CFG["models"]["analyse"]
 
 
-def test_exceeding_the_call_cap_raises_the_dedicated_error():
-    import pytest
-
-    from analyst import CallCapExceeded
+def test_a_cap_spent_on_triage_leaves_nothing_to_read_so_the_run_says_so_instead_of_crashing():
     cfg = dict(CFG, run=dict(CFG["run"], max_calls_per_run=1))
-    with pytest.raises(CallCapExceeded):
-        run(cfg, "profile", Store(":memory:"), FakeRun(), fetch_of(P("a")), lambda t: None, NOW)
+    sent, store = [], Store(":memory:")
+    run(cfg, "profile", store, FakeRun(), fetch_of(P("a")), sent.append, NOW)
+    assert len(sent) == 1 and "cut short" in sent[0] and "CallCapExceeded" in sent[0]
+    assert store.since(2, NOW) == NOW - timedelta(days=2)
 
 
 def test_failed_sources_reported_in_header():
@@ -285,3 +287,48 @@ def test_lock_blocks_a_second_holder_until_released(tmp_path):
     assert first is not None and acquire_lock(path) is None
     first.close()
     assert acquire_lock(path) is not None
+
+
+def test_a_non_limit_failure_mid_deep_read_still_delivers_the_papers_already_read():
+    store = Store(":memory:")
+    papers = [P("a"), P("b", "science")]
+    # calls: 1 triage, 2 read a, 3 read b (times out)
+    sent, _, _ = go(papers, store=store, fake=FakeRun(scores={"a": 9, "b": 8}, error_on_call=3))
+    assert "Title a" in sent[1] and "cut short" in sent[-1] and "RunnerError" in sent[-1]
+    assert [p.id for p in store.new_only(papers)] == ["b"]
+    assert store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_exhausting_the_call_cap_mid_deep_read_also_delivers_what_was_read():
+    cfg = dict(CFG, run=dict(CFG["run"], max_calls_per_run=2))  # 1 triage + 1 read, then the cap
+    sent = []
+    store = Store(":memory:")
+    run(cfg, "profile", store, FakeRun(scores={"a": 9, "b": 8}), fetch_of(P("a"), P("b", "science")), sent.append, NOW)
+    assert "Title a" in sent[1] and "cut short" in sent[-1]
+    assert store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_a_backlog_bigger_than_the_call_cap_is_bounded_to_the_newest_papers_not_a_daily_crash():
+    cfg = dict(CFG, run=dict(CFG["run"], max_calls_per_run=10, triage_batch=2, max_papers=1))
+    papers = [P(f"p{i:02d}", published=f"2026-10-{i + 1:02d}") for i in range(20)]  # p19 is the newest
+    sent, fake = [], FakeRun()
+    store = Store(":memory:")
+    run(cfg, "profile", store, fake, fetch_of(*papers), sent.append, NOW)  # must not raise CallCapExceeded
+    triaged = [r["id"] for model, system, user in fake.calls if "triage" in system.lower() for r in json.loads(user)]
+    assert len(triaged) == 6 and set(triaged) == {f"p{i:02d}" for i in range(14, 20)}
+    assert "14 older papers not triaged" in sent[0]
+    assert store.since(2, NOW) == NOW  # the run completed, so it advances
+
+
+def test_when_every_source_fails_nothing_is_lost_and_last_success_does_not_advance():
+    store, sent = Store(":memory:"), []
+    fake = FakeRun()
+    run(CFG, "profile", store, fake, fetch_of(failed=["arxiv/finance", "pubmed"]), sent.append, NOW)
+    assert len(sent) == 1 and "All sources failed" in sent[0] and "pubmed" in sent[0]
+    assert fake.calls == [] and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_a_partial_source_outage_still_completes_and_is_reported():
+    store = Store(":memory:")
+    sent, _, _ = go([P("a")], store=store, failed=["nber"])
+    assert "sources failed: nber" in sent[0] and store.since(2, NOW + timedelta(days=9)) == NOW

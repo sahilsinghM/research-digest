@@ -21,27 +21,46 @@ HERE = Path(__file__).parent
 
 def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
     """Fetch, score, read, format, send. Delivery state is written only when not a dry run, and
-    last-success only when the whole run finished (a usage-limit stop or a crash leaves it behind)."""
+    last-success only when the whole run finished (a usage-limit stop, a mid-run failure or a crash
+    leaves it behind so the next run picks the work up)."""
     r, m = cfg["run"], cfg["models"]
     since = store.since(r["lookback_days_first_run"], now)
-    papers, failed = fetch(cfg, since.date(), now.date())
-    papers = prefilter(store.new_only(papers), cfg["keywords"]["medical"], r["min_abstract_chars"])
+    fetched, failed = fetch(cfg, since.date(), now.date())
+    if failed and not fetched:  # total outage: advancing would lose that day's papers for good
+        send(f"⚠ All sources failed ({', '.join(failed)}): nothing fetched. Will retry on the next run.")
+        return
+    papers = prefilter(store.new_only(fetched), cfg["keywords"]["medical"], r["min_abstract_chars"])
     notes = [f"sources failed: {', '.join(failed)}"] if failed else []
 
+    # Triage must never eat the whole call cap (an outage backlog would then crash every day): keep the newest
+    # papers that fit, leaving room for the deep reads and the concept, each of which may retry once.
+    reserve = 2 * r["max_papers"] + 2
+    room = max(1, (r["max_calls_per_run"] - reserve) // 2) * r["triage_batch"]
+    if len(papers) > room:
+        notes.append(f"{len(papers) - room} older papers not triaged (call cap)")
+        papers = sorted(papers, key=lambda p: p.published, reverse=True)[:room]
+
     ask = analyst.CallCap(ask_model, r["max_calls_per_run"])
-    done, limit_hit = [], False
+    done, stop = [], None
     try:
         analyst.triage(ask, m["triage"], papers, profile, r["triage_batch"])
         log.info("triage: %d papers scored, %d at or above the bar", len(papers),
                  sum(p.score >= r["min_score"] for p in papers))
         for p in pick(papers, cfg["quota"], r["max_papers"], r["min_score"]):
-            a = analyst.deep_read(ask, m["analyse"], p, profile)
+            try:
+                a = analyst.deep_read(ask, m["analyse"], p, profile)
+            except (runner.RunnerError, analyst.CallCapExceeded) as e:
+                if isinstance(e, runner.UsageLimitReached):
+                    raise
+                stop = f"{type(e).__name__}"  # keep what was already read; the rest is retried next run
+                log.warning("deep read stopped: %s", e)
+                break
             if a:
                 done.append((p, a))
             else:
                 log.warning("skipping %s: model reply was not valid JSON", p.id)
     except runner.UsageLimitReached:
-        limit_hit = True
+        stop = "Claude usage limit reached"
 
     if done:
         send(digest.header_msg(done, len(papers), now.date().isoformat(), notes))
@@ -49,21 +68,21 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
             send(digest.paper_msg(p, a))
             if not dry_run:
                 store.mark_sent(p)  # only after the message went out: a retry resends nothing already delivered
-        if not limit_hit:
+        if not stop:
             try:
                 concept = analyst.teach(ask, m["analyse"], done, profile)
             except runner.UsageLimitReached:
-                limit_hit, concept = True, None
+                stop, concept = "Claude usage limit reached", None
             except (runner.RunnerError, analyst.CallCapExceeded) as e:  # the concept is a bonus, never a blocker
                 log.warning("no teach-me today: %s", e)
                 concept = None
             if concept:
                 send(digest.teach_msg(concept))
-    elif not limit_hit:
+    elif not stop:
         send("\n".join([f"Nothing worth your time today ({len(papers)} new papers scanned)."] + notes))
 
-    if limit_hit:
-        send(f"⚠ Claude usage limit reached: {len(done)} papers delivered. The rest will be retried on the next run.")
+    if stop:
+        send(f"⚠ Run cut short ({stop}): {len(done)} papers delivered. The rest will be retried on the next run.")
         return
     if not dry_run:
         store.record_success(now)

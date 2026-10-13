@@ -66,7 +66,8 @@ def deep_read(run, model, p, profile):
     # The whole paper travels as one JSON object so its text cannot pose as instructions; length is bounded.
     user = json.dumps({"title": p.title, "journal": p.journal, "type": p.kind,
                        "abstract": p.abstract[:4000] or "(none available)"}, ensure_ascii=False)
-    return ask(run, model, DEEP.format(profile=profile), user)
+    out = ask(run, model, DEEP.format(profile=profile), user)
+    return out if isinstance(out, dict) else None  # a list or scalar would crash the formatter mid-send
 
 
 TRIAGE = """You triage new research papers for one specific reader.

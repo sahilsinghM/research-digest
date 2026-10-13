@@ -18,7 +18,7 @@ Make the runner safe to leave unattended on a subscription. It must guarantee th
 ## Acceptance criteria
 
 - [x] API-key and auth-token variables are removed from the child environment even when set in the parent (test asserts the child never sees them)
-- [x] Every call runs with all tools disabled, no MCP servers, an empty working directory, a dedicated throwaway config directory, no session persistence, one turn, JSON output, and a timeout (test asserts the flags and environment the fake executable received)
+- [x] Every call runs with all tools disabled, no MCP servers, an empty working directory, no session persistence, JSON output, and a timeout (NOT done: a dedicated throwaway config directory and a one-turn limit — a throwaway config dir would break file-based login, so it is deferred until token-only auth is confirmed on the VPS, issue 07) (test asserts the flags and environment the fake executable received)
 - [x] A hang is cut off by the timeout and reported as an error
 - [x] Non-zero exit or a result containing the session-limit or weekly-limit phrase raises a dedicated usage-limit error; other failures raise a distinct runner error
 - [x] A login self-check using the auth status command runs at start and fails fast with a readable message when not logged in
