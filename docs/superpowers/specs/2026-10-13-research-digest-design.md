@@ -52,12 +52,14 @@ One script, run from cron once daily (default 07:00 IST).
 
 | Area | Sources |
 |---|---|
-| Finance/econ | arXiv (q-fin, econ), NBER, RePEc, SSRN, Crossref feeds for AER, QJE, JPE, Econometrica, JF, JFE, RFS |
+| Finance/econ | arXiv (q-fin, econ), NBER working papers (RSS), Crossref feeds for AER, QJE, JPE, Econometrica, JF, JFE, RFS |
 | Science/eng | arXiv (math, physics, cs, q-bio), bioRxiv, Crossref feeds for Nature, Science, Cell, PNAS, Nature-family |
 | Medical | PubMed filtered to a journal whitelist (NEJM, Lancet, JAMA, BMJ, Nature Medicine, JACC, Gut, Hepatology, JAAD, similar) plus Cochrane; medRxiv flagged as preprint |
 
-Full text is used when open access (arXiv, PubMed Central, bioRxiv, Unpaywall);
-otherwise abstract only, and the digest says so.
+Full text is used for arXiv, bioRxiv and medRxiv (PDF sent to the model as a
+document block); everything else is abstract only, and the digest says so.
+Deferred: SSRN and RePEc (no usable public feed), PubMed Central and Unpaywall
+full text. Medical journals come from PubMed only (journal whitelist).
 
 "Since last run": each source is queried for items newer than the last
 successful run timestamp. The timestamp advances only when the run completes,
@@ -104,8 +106,12 @@ Telegram confirms delivery.
 ## Files
 
 ```
-agent.py        pipeline
-sources.py      one small function per source
+agent.py        orchestration, cron entry point, lock, failure notice
+sources.py      one fetch + one pure parse function per source
+store.py        SQLite state
+rank.py         medical keyword prefilter, quota selection
+llm.py          triage, deep read, teach, cost budget
+digest.py       message formatting, Telegram send
 profile.md      personal profile (gitignored)
 config.toml     topics, journal whitelist, quotas, model names, cost cap
 .env            ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (gitignored)
