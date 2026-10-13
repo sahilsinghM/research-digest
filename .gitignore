@@ -1,0 +1,9 @@
+.env
+profile.md
+state.db
+.lock
+agent.log
+.venv/
+__pycache__/
+.pytest_cache/
+.superpowers/

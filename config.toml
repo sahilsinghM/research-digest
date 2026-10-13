@@ -1,0 +1,108 @@
+[run]
+lookback_days_first_run = 2
+max_papers = 8
+min_score = 5
+daily_cost_cap_usd = 3.0
+
+[models]
+triage = "claude-haiku-5-5"
+analyse = "claude-sonnet-5-5"
+
+# USD per million tokens. Verify against current Anthropic pricing before the first live run.
+[prices.claude-haiku-5-5]
+in = 1.0
+out = 5.0
+
+[prices.claude-sonnet-5-5]
+in = 3.0
+out = 15.0
+
+[quota]
+finance = 2
+science = 2
+medical = 3
+
+# Only medical items are keyword-prefiltered (PubMed is broad); Haiku triage does the real filtering.
+[keywords]
+medical = [
+  "sleep", "insomnia", "diet", "nutrition", "obes", "weight", "cardio", "heart", "blood pressure",
+  "cholesterol", "statin", "erectile", "ejaculat", "sexual", "urolog", "prostate", "testosterone",
+  "liver", "hepat", "kidney", "renal", "skin", "acne", "dermat", "hair", "alopecia", "minoxidil",
+  "finasteride", "depress", "anxiety", "mental health", "smok", "nicotine", "alcohol", "tinnitus",
+  "pharyng", "microbio", "inflamm", "exercise",
+]
+
+# ponytail: each arXiv query sees only the newest 100; cs.* alone has hundreds a day. Split queries if it matters.
+[[arxiv]]
+area = "finance"
+q = "cat:q-fin.* OR cat:econ.*"
+
+[[arxiv]]
+area = "science"
+q = "cat:math.* OR cat:physics.* OR cat:cond-mat.* OR cat:q-bio.*"
+
+[[arxiv]]
+area = "science"
+q = "cat:cs.*"
+
+[[journal]]
+name = "Nature"
+issn = "0028-0836"
+area = "science"
+
+[[journal]]
+name = "Science"
+issn = "0036-8075"
+area = "science"
+
+[[journal]]
+name = "Cell"
+issn = "0092-8674"
+area = "science"
+
+[[journal]]
+name = "PNAS"
+issn = "0027-8424"
+area = "science"
+
+[[journal]]
+name = "American Economic Review"
+issn = "0002-8282"
+area = "finance"
+
+[[journal]]
+name = "Quarterly Journal of Economics"
+issn = "0033-5533"
+area = "finance"
+
+[[journal]]
+name = "Journal of Political Economy"
+issn = "0022-3808"
+area = "finance"
+
+[[journal]]
+name = "Econometrica"
+issn = "0012-9682"
+area = "finance"
+
+[[journal]]
+name = "Journal of Finance"
+issn = "0022-1082"
+area = "finance"
+
+[[journal]]
+name = "Journal of Financial Economics"
+issn = "0304-405X"
+area = "finance"
+
+[[journal]]
+name = "Review of Financial Studies"
+issn = "0893-9454"
+area = "finance"
+
+[pubmed]
+journals = [
+  "N Engl J Med", "Lancet", "JAMA", "BMJ", "Nat Med", "J Am Coll Cardiol", "Eur Heart J", "Circulation",
+  "Gut", "Hepatology", "J Hepatol", "J Am Acad Dermatol", "Kidney Int", "Sleep", "JAMA Psychiatry",
+  "Lancet Psychiatry", "Eur Urol", "J Urol", "J Sex Med", "Cochrane Database Syst Rev",
+]
