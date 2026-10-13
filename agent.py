@@ -8,7 +8,7 @@ import analyst
 import digest
 import runner
 import sources
-from rank import first_per_area, prefilter
+from rank import pick, prefilter
 from store import Store
 
 log = logging.getLogger("agent")
@@ -16,20 +16,27 @@ HERE = Path(__file__).parent
 
 
 def run(cfg, profile, store, ask_model, fetch, send, now):
-    """Fetch, read, format, send. Reads state but never writes it (delivery state arrives in a later issue)."""
+    """Fetch, score, read, format, send. Reads state but never writes it (delivery state arrives in a later issue)."""
     since = store.since(cfg["run"]["lookback_days_first_run"], now)
     papers, failed = fetch(cfg, since.date(), now.date())
     papers = prefilter(store.new_only(papers), cfg["keywords"]["medical"])
     notes = [f"sources failed: {', '.join(failed)}"] if failed else []
 
+    ask = analyst.CallCap(ask_model, cfg["run"]["max_calls_per_run"])
+    analyst.triage(ask, cfg["models"]["triage"], papers, profile, cfg["run"]["triage_batch"])
+    log.info("triage: %d papers scored, %d at or above the bar", len(papers),
+             sum(p.score >= cfg["run"]["min_score"] for p in papers))
+    chosen = pick(papers, cfg["quota"], cfg["run"]["max_papers"], cfg["run"]["min_score"])
+
     done = []
-    for p in first_per_area(papers, cfg["quota"]):
-        a = analyst.deep_read(ask_model, cfg["models"]["analyse"], p, profile)
+    for p in chosen:
+        a = analyst.deep_read(ask, cfg["models"]["analyse"], p, profile)
         if a:
             done.append((p, a))
         else:
             log.warning("skipping %s: model reply was not valid JSON", p.id)
 
+    log.info("model calls used: %d of %d", ask.calls, ask.cap)
     if not done:
         send("\n".join([f"Nothing worth your time today ({len(papers)} new papers scanned)."] + notes))
         return

@@ -19,3 +19,8 @@ def test_models_configured_and_no_dollar_pricing():
 def test_journals_well_formed():
     for j in load()["journal"]:
         assert j["area"] in {"finance", "science"} and len(j["issn"]) == 9
+
+
+def test_call_cap_and_triage_batch_configured():
+    run = load()["run"]
+    assert run["max_calls_per_run"] >= 20 and run["triage_batch"] >= 10

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from analyst import deep_read, parse_json
+from analyst import CallCap, CallCapExceeded, deep_read, parse_json, triage
 from sources import Paper
 
 
@@ -66,3 +66,60 @@ def test_prompt_tells_model_paper_text_is_data_and_not_to_invent_numbers():
     deep_read(run, "m", P(), "p")
     system = run.calls[0][1].lower()
     assert "data" in system and "do not state one" in system
+
+
+def T(id, abstract=""):
+    return Paper(id=id, title="T " + id, abstract=abstract, source="s", area="finance", journal="J",
+                 url="u", published="2026-10-12", kind="peer")
+
+
+def test_triage_scores_and_defaults_missing_to_zero_even_with_empty_abstracts():
+    ps = [T("a"), T("b")]
+    triage(FakeRun('```json\n[{"id": "a", "score": 8.5}]\n```'), "m", ps, "profile")
+    assert (ps[0].score, ps[1].score) == (8.5, 0.0)
+
+
+def test_triage_batches_by_size():
+    ps = [T(str(i)) for i in range(7)]
+    run = FakeRun("[]", "[]", "[]")
+    triage(run, "m", ps, "profile", batch=3)
+    assert len(run.calls) == 3
+    assert [r["id"] for r in json.loads(run.calls[2][2])] == ["6"]
+
+
+def test_triage_survives_garbage_twice_and_odd_rows():
+    ps = [T("a"), T("b")]
+    triage(FakeRun("nope", "still nope"), "m", ps, "profile")
+    assert [p.score for p in ps] == [0.0, 0.0]
+    triage(FakeRun('[{"id": "a"}, "junk", {"id": "b", "score": "x"}, {"id": "a", "score": 7}]'), "m", ps, "profile")
+    assert (ps[0].score, ps[1].score) == (7.0, 0.0)
+
+
+def test_triage_ignores_a_non_list_reply():
+    ps = [T("a")]
+    triage(FakeRun('{"id": "a", "score": 9}', '{"id": "a", "score": 9}'), "m", ps, "profile")
+    assert ps[0].score == 0.0
+
+
+def test_triage_puts_profile_in_system_prompt_and_makes_no_call_for_no_papers():
+    run = FakeRun("[]")
+    triage(run, "m", [T("a")], "I AM THE PROFILE")
+    assert "I AM THE PROFILE" in run.calls[0][1]
+    run2 = FakeRun()
+    triage(run2, "m", [], "profile")
+    assert run2.calls == []
+
+
+def test_triage_truncates_very_long_abstracts():
+    run = FakeRun("[]")
+    triage(run, "m", [T("a", abstract="x" * 5000)], "profile")
+    assert len(json.loads(run.calls[0][2])[0]["abstract"]) == 1200
+
+
+def test_call_cap_allows_up_to_cap_then_raises_and_counts_retries():
+    inner = FakeRun("a", "b", "c")
+    capped = CallCap(inner, 2)
+    assert capped("m", "s", "u") == "a" and capped("m", "s", "u") == "b"
+    with pytest.raises(CallCapExceeded):
+        capped("m", "s", "u")
+    assert capped.calls == 2 and len(inner.calls) == 2

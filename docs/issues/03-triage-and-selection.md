@@ -2,7 +2,7 @@
 title: Triage, profile and selection
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Triage, profile and selection
@@ -17,13 +17,13 @@ Replace the naive selection with real triage. Load the private profile (gitignor
 
 ## Acceptance criteria
 
-- [ ] Papers missing from the model's reply score zero; garbage output twice leaves a batch at zero without crashing
-- [ ] Batches respect the configured size; the profile text appears in the system prompt
-- [ ] Selection respects quotas, minimum score and total cap, highest score first; nothing is selected when all are below the bar
-- [ ] Exceeding the per-run call cap raises a dedicated error
-- [ ] An empty day produces exactly one short message
-- [ ] Medical keyword prefilter applies only to medical papers
-- [ ] Full test suite passes
+- [x] Papers missing from the model's reply score zero; garbage output twice leaves a batch at zero without crashing
+- [x] Batches respect the configured size; the profile text appears in the system prompt
+- [x] Selection respects quotas, minimum score and total cap, highest score first; nothing is selected when all are below the bar
+- [x] Exceeding the per-run call cap raises a dedicated error
+- [x] An empty day produces exactly one short message
+- [x] Medical keyword prefilter applies only to medical papers
+- [x] Full test suite passes
 
 ## Blocked by
 

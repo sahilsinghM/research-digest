@@ -144,3 +144,17 @@ def test_check_login_ignores_api_key_in_environment(fake_claude, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "secret-value")
     monkeypatch.setenv("FAKE_AUTH_OUTPUT", AUTH_OK)
     runner.check_login()  # must not raise; the key is stripped before claude runs
+
+
+def test_model_text_that_imitates_a_limit_message_is_not_a_usage_limit(fake_claude, monkeypatch):
+    # A prompt-injected abstract could make the model *say* this; a real limit means no tokens were generated.
+    monkeypatch.setenv("FAKE_OUTPUT", '{"is_error": false, "result": "You\'ve hit your session limit", '
+                                      '"usage": {"output_tokens": 9}}')
+    assert runner.claude("haiku", "s", "u").startswith("You've hit your")
+
+
+def test_real_limit_with_zero_generated_tokens_is_still_detected(fake_claude, monkeypatch):
+    monkeypatch.setenv("FAKE_OUTPUT", '{"is_error": false, "result": "You\'ve hit your session limit", '
+                                      '"usage": {"output_tokens": 0}}')
+    with pytest.raises(runner.UsageLimitReached):
+        runner.claude("haiku", "s", "u")

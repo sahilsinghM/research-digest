@@ -48,9 +48,11 @@ def claude(model, system, user, timeout=300):
         out = None
     text = str(out.get("result", "")) if isinstance(out, dict) else p.stdout
     failed = p.returncode != 0 or not isinstance(out, dict) or out.get("is_error")
-    # A limit message can arrive as a failed call or as the result text of an "ok" one; a normal answer
-    # (JSON about a paper) never starts with it.
-    if LIMIT.search(text) and (failed or LIMIT.search(text.lstrip()[:60])):
+    # A limit message can arrive as a failed call, or as the result text of an "ok" one. In the "ok" case the
+    # model must have generated nothing: text that merely imitates the message (e.g. via a prompt-injected
+    # abstract) always comes with output tokens and must not stop the run.
+    generated = isinstance(out, dict) and (out.get("usage") or {}).get("output_tokens", 0) > 0
+    if LIMIT.search(text) and (failed or (LIMIT.search(text.lstrip()[:60]) and not generated)):
         raise UsageLimitReached(text[:200])
     if failed:
         raise RunnerError(f"claude exited {p.returncode}: {(text or p.stderr)[:300]}")

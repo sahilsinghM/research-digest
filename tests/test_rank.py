@@ -34,8 +34,19 @@ def test_pick_nothing_when_all_below_min():
     assert pick([P("a", score=2)], {"finance": 2}, 8, 5) == []
 
 
-def test_first_per_area_takes_quota_in_order():
-    from rank import first_per_area
-    ps = [P("f1", "finance"), P("f2", "finance"), P("f3", "finance"), P("m1", "medical")]
-    got = first_per_area(ps, {"finance": 2, "science": 2, "medical": 3})
+
+def test_pick_respects_quota_min_score_and_order():
+    ps = [P("f1", "finance", 9), P("f2", "finance", 8), P("f3", "finance", 7),
+          P("s1", "science", 4), P("m1", "medical", 6)]
+    got = pick(ps, {"finance": 2, "science": 2, "medical": 3}, max_papers=8, min_score=5)
     assert [p.id for p in got] == ["f1", "f2", "m1"]
+
+
+def test_pick_caps_total():
+    ps = [P(f"f{i}", "finance", 9 - i * 0.1) for i in range(5)] + [P("m", "medical", 7)]
+    got = pick(ps, {"finance": 5, "medical": 3}, max_papers=3, min_score=5)
+    assert [p.id for p in got] == ["f0", "f1", "f2"]
+
+
+def test_pick_nothing_when_all_below_min():
+    assert pick([P("a", score=2)], {"finance": 2}, 8, 5) == []
