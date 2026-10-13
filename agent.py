@@ -45,6 +45,7 @@ def main(argv=None):
     if not args.dry_run:
         raise SystemExit("Sending to Telegram arrives with issue 05; run with --dry-run for now.")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    log.info("claude plan: %s", runner.check_login())  # fail fast, before any fetching or model calls
     with open(HERE / "config.toml", "rb") as f:
         cfg = tomllib.load(f)
     profile_file = HERE / "profile.md"

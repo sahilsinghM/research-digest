@@ -82,3 +82,22 @@ def test_dry_run_writes_no_state():
     go(papers, store=store)
     assert store.new_only(papers) == papers
     assert store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_main_stops_before_fetching_when_login_check_fails(monkeypatch):
+    import pytest
+
+    import agent
+    import runner
+    import sources
+
+    def not_logged_in():
+        raise runner.RunnerError("Claude Code is not logged in")
+
+    def must_not_fetch(*a, **k):
+        raise AssertionError("fetched despite failed login check")
+
+    monkeypatch.setattr(runner, "check_login", not_logged_in)
+    monkeypatch.setattr(sources, "fetch_all", must_not_fetch)
+    with pytest.raises(runner.RunnerError, match="not logged in"):
+        agent.main(["--dry-run"])
