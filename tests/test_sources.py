@@ -40,7 +40,6 @@ def test_parse_arxiv():
     assert p.title == "Pricing Options with Rough Vol"
     assert p.abstract == "We study X. Results follow."
     assert p.kind == "preprint" and p.published == "2026-10-12"
-    assert p.fulltext_url == "https://arxiv.org/pdf/2610.01234"
 
 
 def test_parse_crossref_strips_markup_skips_untitled_and_allows_missing_abstract():
@@ -60,7 +59,6 @@ def test_parse_pubmed_joins_abstract_sections_and_allows_missing():
 def test_parse_rxiv_builds_pdf_url():
     [p] = parse_rxiv(RXIV, "medrxiv", "medical")
     assert p.id == "doi:10.1101/2026.10.01.123" and p.kind == "preprint"
-    assert p.fulltext_url == "https://www.medrxiv.org/content/10.1101/2026.10.01.123v2.full.pdf"
     assert p.journal == "medRxiv"
 
 

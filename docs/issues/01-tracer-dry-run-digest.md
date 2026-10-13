@@ -2,7 +2,7 @@
 title: Tracer bullet: a real dry-run digest
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Tracer bullet: a real dry-run digest
@@ -17,12 +17,12 @@ Run the whole path once, thinly, so a real digest exists to judge. The existing 
 
 ## Acceptance criteria
 
-- [ ] `agent.py --dry-run` prints a header plus one message per selected paper using real fetched papers and the real `claude -p` on this machine
-- [ ] Each paper message shows title, journal, link, evidence badge, what was found, for you, do, for the world, and evidence line; fields are clipped so one message stays under 4096 characters
-- [ ] The header names the count per area and lists failed sources when there are any
-- [ ] Dry run writes nothing to the state store
-- [ ] Tests use a fake runner and cover: analysis JSON wrapped in code fences or prose still parses, unparseable output twice skips that paper without crashing, empty abstract is handled
-- [ ] Full test suite passes
+- [x] `agent.py --dry-run` prints a header plus one message per selected paper using real fetched papers and the real `claude -p` on this machine
+- [x] Each paper message shows title, journal, link, evidence badge, what was found, for you, do, for the world, and evidence line; fields are clipped so one message stays under 4096 characters
+- [x] The header names the count per area and lists failed sources when there are any
+- [x] Dry run writes nothing to the state store
+- [x] Tests use a fake runner and cover: analysis JSON wrapped in code fences or prose still parses, unparseable output twice skips that paper without crashing, empty abstract is handled
+- [x] Full test suite passes
 
 ## Blocked by
 

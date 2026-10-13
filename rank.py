@@ -12,3 +12,8 @@ def pick(papers, quota, max_papers, min_score):
         chosen += [p for p in ranked if p.area == area][:n]
     chosen.sort(key=lambda p: -p.score)
     return chosen[:max_papers]
+
+
+# Tracer-bullet stand-in until triage scoring exists (issue 03 replaces it with pick()).
+def first_per_area(papers, quota):
+    return [p for area, n in quota.items() for p in [q for q in papers if q.area == area][:n]]

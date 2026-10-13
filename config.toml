@@ -2,20 +2,10 @@
 lookback_days_first_run = 2
 max_papers = 8
 min_score = 5
-daily_cost_cap_usd = 3.0
 
 [models]
 triage = "claude-haiku-5-5"
 analyse = "claude-sonnet-5-5"
-
-# USD per million tokens. Verify against current Anthropic pricing before the first live run.
-[prices.claude-haiku-5-5]
-in = 1.0
-out = 5.0
-
-[prices.claude-sonnet-5-5]
-in = 3.0
-out = 15.0
 
 [quota]
 finance = 2

@@ -28,7 +28,6 @@ class Paper:
     url: str
     published: str  # YYYY-MM-DD
     kind: str  # "peer" | "preprint"
-    fulltext_url: str = ""
     score: float = 0.0
 
 
@@ -57,8 +56,7 @@ def parse_arxiv(xml, area):
         yield Paper(id=f"arxiv:{aid}", title=_text(e.findtext(ATOM + "title")),
                     abstract=_text(e.findtext(ATOM + "summary")), source="arxiv", area=area,
                     journal="arXiv", url=f"https://arxiv.org/abs/{aid}",
-                    published=e.findtext(ATOM + "published")[:10], kind="preprint",
-                    fulltext_url=f"https://arxiv.org/pdf/{aid}")
+                    published=e.findtext(ATOM + "published")[:10], kind="preprint")
 
 
 def fetch_arxiv(q, area, since, n=100):
@@ -114,8 +112,7 @@ def parse_rxiv(data, server, area):
     for r in data.get("collection", []):
         yield Paper(id="doi:" + r["doi"], title=_text(r["title"]), abstract=_text(r.get("abstract")),
                     source=server, area=area, journal=RXIV_NAMES[server], url="https://doi.org/" + r["doi"],
-                    published=r["date"], kind="preprint",
-                    fulltext_url=f"https://www.{server}.org/content/{r['doi']}v{r.get('version', '1')}.full.pdf")
+                    published=r["date"], kind="preprint")
 
 
 def fetch_rxiv(server, area, since, today, pages=3):

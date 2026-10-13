@@ -10,10 +10,10 @@ def test_quota_areas():
     assert set(load()["quota"]) == {"finance", "science", "medical"}
 
 
-def test_every_model_has_a_price():
+def test_models_configured_and_no_dollar_pricing():
     cfg = load()
-    for model in cfg["models"].values():
-        assert {"in", "out"} <= set(cfg["prices"][model])
+    assert set(cfg["models"]) == {"triage", "analyse"}
+    assert "prices" not in cfg and "daily_cost_cap_usd" not in cfg["run"]
 
 
 def test_journals_well_formed():
