@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from analyst import CallCap, CallCapExceeded, deep_read, parse_json, triage
+from analyst import CallCap, CallCapExceeded, deep_read, parse_json, teach, triage
 from sources import Paper
 
 
@@ -123,3 +123,21 @@ def test_call_cap_allows_up_to_cap_then_raises_and_counts_retries():
     with pytest.raises(CallCapExceeded):
         capped("m", "s", "u")
     assert capped.calls == 2 and len(inner.calls) == 2
+
+
+CONCEPT = {"name": "Drawdown", "explain": "e", "example": "x"}
+
+
+def test_teach_returns_a_concept_built_from_the_days_papers_and_profile():
+    run = FakeRun(json.dumps(CONCEPT))
+    done = [(T("a"), {"found": "Options skew predicts returns"}), (T("b"), {"found": "Sleep and BP"})]
+    assert teach(run, "m", done, "I AM THE PROFILE") == CONCEPT
+    _, system, user = run.calls[0]
+    assert "I AM THE PROFILE" in system and "ONE concept" in system
+    assert "Options skew predicts returns" in user and "T b" in user
+
+
+def test_teach_is_none_when_reply_is_garbage_or_not_an_object():
+    assert teach(FakeRun("junk", "junk"), "m", [(T("a"), {})], "p") is None
+    assert teach(FakeRun("[1, 2]", "[1, 2]"), "m", [(T("a"), {})], "p") is None
+    assert teach(FakeRun('{"name": "only a name"}'), "m", [(T("a"), {})], "p") is None

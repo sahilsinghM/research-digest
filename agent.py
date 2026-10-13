@@ -36,13 +36,21 @@ def run(cfg, profile, store, ask_model, fetch, send, now):
         else:
             log.warning("skipping %s: model reply was not valid JSON", p.id)
 
-    log.info("model calls used: %d of %d", ask.calls, ask.cap)
     if not done:
         send("\n".join([f"Nothing worth your time today ({len(papers)} new papers scanned)."] + notes))
         return
     send(digest.header_msg(done, len(papers), now.date().isoformat(), notes))
     for p, a in done:
         send(digest.paper_msg(p, a))
+    try:
+        concept = analyst.teach(ask, cfg["models"]["analyse"], done, profile)
+    except (runner.RunnerError, analyst.CallCapExceeded) as e:  # the concept is a bonus, never a blocker
+        log.warning("no teach-me today: %s", e)
+        concept = None
+    if concept:
+        send(digest.teach_msg(concept))
+
+    log.info("model calls used: %d of %d", ask.calls, ask.cap)
 
 
 def main(argv=None):

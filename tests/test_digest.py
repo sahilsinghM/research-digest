@@ -1,10 +1,10 @@
-from digest import clip, header_msg, paper_msg
+from digest import clip, header_msg, paper_msg, teach_msg
 from sources import Paper
 
 
-def P(title="T", kind="preprint", area="finance", journal="J", url="https://e.com/p"):
+def P(title="T", kind="preprint", area="finance", journal="J", url="https://e.com/p", score=0.0):
     return Paper(id="x", title=title, abstract="", source="s", area=area, journal=journal,
-                 url=url, published="2026-10-12", kind=kind)
+                 url=url, published="2026-10-12", kind=kind, score=score)
 
 
 A = {"did": "d", "found": "found it", "evidence": "n=10", "for_you": "mine", "action": "act", "for_world": "all"}
@@ -49,3 +49,19 @@ def test_paper_msg_escapes_html_in_every_dynamic_field():
 
 def test_apostrophes_are_not_turned_into_entities_in_body_text():
     assert "don't" in paper_msg(P(), dict(A, found="don't"))
+
+
+def test_header_names_the_highest_scoring_paper_as_most_important():
+    done = [(P(title="Minor one", score=5), A), (P(title="The big one", score=9), A), (P(title="Mid", score=7), A)]
+    h = header_msg(done, 10, "2026-10-13")
+    assert "Most important: The big one" in h
+
+
+def test_teach_msg_has_name_explanation_example_and_escapes():
+    m = teach_msg({"name": "P&L", "explain": "a<b", "example": "it's c"})
+    assert "P&amp;L" in m and "a&lt;b" in m and "it's c" in m
+
+
+def test_teach_msg_stays_under_limit_and_tolerates_missing_fields():
+    assert len(teach_msg({"name": "n" * 9000, "explain": "e" * 9000, "example": "x" * 9000})) <= 4096
+    assert teach_msg({})

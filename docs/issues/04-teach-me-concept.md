@@ -2,7 +2,7 @@
 title: Teach-me concept and top item
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Teach-me concept and top item
@@ -17,11 +17,11 @@ After the papers, one extra message teaches a single underlying concept the day'
 
 ## Acceptance criteria
 
-- [ ] A teach-me message with name, explanation and example is produced from the day's analyses and the profile
-- [ ] Model and source text in the message is HTML-escaped and clipped to fit the size limit
-- [ ] If the concept call fails or is unparseable, the digest is still delivered without it
-- [ ] The header names the highest-scoring paper as most important
-- [ ] Full test suite passes
+- [x] A teach-me message with name, explanation and example is produced from the day's analyses and the profile
+- [x] Model and source text in the message is HTML-escaped and clipped to fit the size limit
+- [x] If the concept call fails or is unparseable, the digest is still delivered without it
+- [x] The header names the highest-scoring paper as most important
+- [x] Full test suite passes
 
 ## Blocked by
 

@@ -31,6 +31,14 @@ def paper_msg(p, a):
 
 def header_msg(done, n_scanned, day, notes=()):
     counts = ", ".join(f"{n} {area}" for area, n in Counter(p.area for p, _ in done).items())
-    lines = [f"<b>Research digest {esc(day)}</b>", f"{len(done)} papers ({counts}) from {n_scanned} new"]
+    top = max(done, key=lambda d: d[0].score)[0]
+    lines = [f"<b>Research digest {esc(day)}</b>", f"{len(done)} papers ({counts}) from {n_scanned} new",
+             f"Most important: {esc(clip(top.title, 200))}"]
     lines += [f"<i>{esc(n)}</i>" for n in notes]
     return "\n".join(lines)
+
+
+def teach_msg(t):
+    return (f"<b>Today's concept: {esc(clip(t.get('name'), 100))}</b>\n\n"
+            f"{esc(clip(t.get('explain'), 1500))}\n\n"
+            f"<i>Example:</i> {esc(clip(t.get('example'), 1000))}")
