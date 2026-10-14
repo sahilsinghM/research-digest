@@ -3,7 +3,8 @@
 A daily job that collects new papers (finance and economics, sciences, medicine), scores them against a private
 reader profile, explains the best few in plain beginner language with a pre-read, and sends them to Telegram.
 All model work runs through headless Claude Code on the owner's Claude **subscription**. Design and history:
-`docs/prd/`, `docs/issues/` (vertical slices, 01-09 done), `CHANGELOG.md`, `README.md` (operations).
+`docs/prd/`, `docs/issues/` (vertical slices, 01-09 done), `CHANGELOG.md`, `README.md` (operations). Public repo: https://github.com/sahilsinghM/research-digest (the
+repo is public, so never commit secrets, the profile, or real personal details).
 
 ## Commands
 

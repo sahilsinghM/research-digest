@@ -4,6 +4,9 @@ Format follows Keep a Changelog. Dates are when the work landed.
 
 ## [Unreleased]
 
+### Added
+- Public repository at https://github.com/sahilsinghM/research-digest (`master`).
+
 ### Changed
 - Runs on the VPS as the low-privilege `digest` user with its own subscription token (`claude setup-token`) and its
   own copy of the `claude` binary instead of as root; root's crontab entry removed, root copy kept as an unscheduled
@@ -47,4 +50,4 @@ First working version, deployed to the VPS and scheduled for 07:00 IST.
 ### Known gaps
 - Limit wording is known, but the exit code / JSON of a real limit hit has not been observed (it is logged when it
   happens); JFE/JPE abstracts unavailable; science
-  coverage thin; merged to `master` locally; no git remote configured yet.
+  coverage thin; none open for the repo: public at github.com/sahilsinghM/research-digest (master).
