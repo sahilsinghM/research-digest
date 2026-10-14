@@ -35,13 +35,16 @@ def _post(token, chat_id, text, mode):
             urllib.request.urlopen(req, timeout=30).read()
             return
         except urllib.error.HTTPError as e:
-            data = json.loads(e.read() or b"{}")
+            try:
+                data = json.loads(e.read() or b"{}")
+            except ValueError:  # e.g. an HTML 502 page from a proxy
+                data = {}
             if e.code == 429:
                 time.sleep(data.get("parameters", {}).get("retry_after", 5))
                 continue
             # `from None`: the original exception carries the request URL, which contains the token.
-            raise TelegramError(f"{e.code}: {data.get('description')}") from None
-        except urllib.error.URLError:
+            raise TelegramError(f"{e.code}: {data.get('description') or e.reason}") from None
+        except OSError:  # URLError, TimeoutError, connection resets
             raise TelegramError("network error reaching Telegram") from None
     raise TelegramError("rate limited by Telegram")
 

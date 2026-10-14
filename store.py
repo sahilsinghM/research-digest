@@ -28,3 +28,20 @@ class Store:
     def new_only(self, papers):
         sent = {r[0] for r in self.db.execute("select id from papers where sent=1")}
         return [p for p in papers if p.id not in sent]
+
+    def record_scores(self, papers):
+        """Remember triage scores so an unsent paper is not scored again tomorrow. Never touches the sent flag."""
+        self.db.executemany(
+            "insert into papers(id,title,source,score,sent) values (?,?,?,?,0) "
+            "on conflict(id) do update set score=excluded.score",
+            [(p.id, p.title, p.source, p.score) for p in papers])
+        self.db.commit()
+
+    def cached_scores(self, papers):
+        ids = [p.id for p in papers]
+        out = {}
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            q = f"select id, score from papers where score is not null and id in ({','.join('?' * len(chunk))})"
+            out.update(self.db.execute(q, chunk).fetchall())
+        return out

@@ -33,3 +33,22 @@ def test_mark_sent_twice_is_fine():
     s.mark_sent(P("a"))
     s.mark_sent(P("a"))
     assert s.new_only([P("a")]) == []
+
+
+def test_recorded_scores_are_remembered_without_marking_papers_sent():
+    s = Store(":memory:")
+    a, b = P("a"), P("b")
+    a.score, b.score = 4.0, 7.5
+    s.record_scores([a, b])
+    assert s.cached_scores([P("a"), P("b"), P("c")]) == {"a": 4.0, "b": 7.5}
+    assert [p.id for p in s.new_only([P("a"), P("b")])] == ["a", "b"]
+
+
+def test_recording_a_score_never_unsends_a_paper_and_sending_keeps_it_scored():
+    s = Store(":memory:")
+    a = P("a")
+    a.score = 8.0
+    s.mark_sent(a)
+    a.score = 3.0
+    s.record_scores([a])
+    assert s.new_only([P("a")]) == [] and s.cached_scores([P("a")]) == {"a": 3.0}

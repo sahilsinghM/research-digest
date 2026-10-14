@@ -332,3 +332,28 @@ def test_a_partial_source_outage_still_completes_and_is_reported():
     store = Store(":memory:")
     sent, _, _ = go([P("a")], store=store, failed=["nber"])
     assert "sources failed: nber" in sent[0] and store.since(2, NOW + timedelta(days=9)) == NOW
+
+
+def _triage_calls(fake):
+    return [c for c in fake.calls if "triage" in c[1].lower()]
+
+
+def test_a_paper_scored_yesterday_is_not_triaged_again_today():
+    store = Store(":memory:")
+    go([P("a")], store=store, fake=FakeRun(scores={"a": 2}))  # below the bar: never sent
+    sent, fake, _ = go([P("a")], store=store, fake=FakeRun(scores={"a": 2}))
+    assert _triage_calls(fake) == [] and "Nothing worth" in sent[0]
+
+
+def test_a_cached_score_still_qualifies_a_paper_that_was_cut_off_by_a_usage_limit():
+    store = Store(":memory:")
+    papers = [P("a"), P("b", "science")]
+    go(papers, store=store, fake=FakeRun(scores={"a": 9, "b": 8}, limit_on_call=3))  # b scored 8, never read
+    sent, fake, _ = go(papers, store=store, fake=FakeRun())
+    assert _triage_calls(fake) == [] and any("Title b" in m for m in sent)
+
+
+def test_dry_run_records_no_scores():
+    store = Store(":memory:")
+    go([P("a")], store=store, dry_run=True)
+    assert store.cached_scores([P("a")]) == {}

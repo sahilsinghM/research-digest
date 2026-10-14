@@ -96,7 +96,7 @@ def _score(v):
 
 
 def triage(run, model, papers, profile, batch=25):
-    """Score every paper 0-10 in place; anything the model skips or garbles scores 0."""
+    """Score every paper 0-10 in place; anything the model skips or garbles scores 0. Returns the scored ids."""
     scores = {}
     for i in range(0, len(papers), batch):
         rows = [{"id": p.id, "title": p.title, "journal": p.journal, "type": p.kind, "area": p.area,
@@ -109,6 +109,7 @@ def triage(run, model, papers, profile, batch=25):
                 continue
     for p in papers:
         p.score = scores.get(p.id, 0.0)
+    return {p.id for p in papers if p.id in scores}  # the ones really scored (the rest default to 0)
 
 
 TEACH = """You are a patient teacher for one specific reader.

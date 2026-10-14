@@ -18,6 +18,12 @@ CROSSREF = {"message": {"items": [
     {"DOI": "10.1/y", "title": [], "URL": "u", "created": {"date-time": "2026-10-12T00:00:00Z"}},
 ]}}
 
+PUBMED_DOI = b"""<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>555</PMID><Article>
+<Journal><Title>Nature</Title></Journal><ArticleTitle>A real finding</ArticleTitle>
+<Abstract><AbstractText>Full abstract text.</AbstractText></Abstract></Article></MedlineCitation>
+<PubmedData><ArticleIdList><ArticleId IdType="pubmed">555</ArticleId><ArticleId IdType="doi">10.1038/x1</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle></PubmedArticleSet>"""
+
 PUBMED = b"""<PubmedArticleSet><PubmedArticle><MedlineCitation><PMID>123</PMID><Article>
 <Journal><Title>The Lancet</Title></Journal>
 <ArticleTitle>Sleep and <i>BP</i></ArticleTitle>
@@ -56,9 +62,10 @@ def test_parse_pubmed_joins_abstract_sections_and_allows_missing():
     assert b.abstract == ""
 
 
-def test_parse_rxiv_builds_pdf_url():
+def test_parse_rxiv_fields():
     [p] = parse_rxiv(RXIV, "medrxiv", "medical")
     assert p.id == "doi:10.1101/2026.10.01.123" and p.kind == "preprint"
+    assert p.url == "https://doi.org/10.1101/2026.10.01.123" and p.published == "2026-10-11"
     assert p.journal == "medRxiv"
 
 
@@ -92,3 +99,46 @@ def test_fetch_arxiv_window_reaches_back_past_weekend_lag(monkeypatch):
     monkeypatch.setattr(sources, "get", lambda *a, **k: ARXIV)  # entry published 2026-10-12
     assert sources.fetch_arxiv("q", "finance", date(2026, 10, 15))  # 3 days older than since: kept
     assert not sources.fetch_arxiv("q", "finance", date(2026, 10, 17))  # 5 days older: dropped
+
+
+def test_parse_pubmed_takes_the_area_given_and_uses_the_doi_as_id_when_there_is_one():
+    [p] = parse_pubmed(PUBMED_DOI, date(2026, 10, 13), area="science")
+    assert p.area == "science" and p.id == "doi:10.1038/x1" and p.abstract == "Full abstract text."
+    [q] = list(parse_pubmed(PUBMED, date(2026, 10, 13)))[:1]
+    assert q.id == "pmid:123" and q.area == "medical"
+
+
+def _fetch_all_with(monkeypatch, crossref, pubmed_by_area):
+    monkeypatch.setattr(sources, "fetch_arxiv", lambda *a, **k: [])
+    monkeypatch.setattr(sources, "fetch_crossref", lambda *a, **k: crossref)
+    monkeypatch.setattr(sources, "fetch_rxiv", lambda *a, **k: [])
+    monkeypatch.setattr(sources, "fetch_nber", lambda *a, **k: [])
+    seen = []
+
+    def fake_pubmed(journals, since, today, area="medical"):
+        seen.append((area, tuple(journals)))
+        return pubmed_by_area.get(area, [])
+
+    monkeypatch.setattr(sources, "fetch_pubmed", fake_pubmed)
+    cfg = {"arxiv": [], "journal": [{"name": "N", "issn": "1", "area": "science"}],
+           "pubmed": {"journals": ["Lancet"]}, "pubmed_extra": [{"area": "science", "journals": ["Nature", "Cell"]}]}
+    papers, failed = sources.fetch_all(cfg, date(2026, 10, 12), date(2026, 10, 13))
+    return papers, failed, seen
+
+
+def _paper(id, abstract, area="science"):
+    return Paper(id=id, title="t", abstract=abstract, source="s", area=area, journal="Nature",
+                 url="u", published="2026-10-12", kind="peer")
+
+
+def test_extra_pubmed_journal_groups_are_fetched_with_their_own_area(monkeypatch):
+    _, failed, seen = _fetch_all_with(monkeypatch, [], {})
+    assert failed == [] and ("medical", ("Lancet",)) in seen and ("science", ("Nature", "Cell")) in seen
+
+
+def test_when_a_paper_comes_from_two_sources_the_copy_with_the_abstract_wins(monkeypatch):
+    bare, full = _paper("doi:10.1/x", ""), _paper("doi:10.1/x", "A long recovered abstract.")
+    papers, _, _ = _fetch_all_with(monkeypatch, [bare], {"science": [full]})
+    assert [p.abstract for p in papers] == ["A long recovered abstract."]
+    papers, _, _ = _fetch_all_with(monkeypatch, [full], {"science": [bare]})
+    assert [p.abstract for p in papers] == ["A long recovered abstract."]

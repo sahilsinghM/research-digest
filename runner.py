@@ -16,7 +16,7 @@ class UsageLimitReached(RunnerError):
 
 # Measured on a machine with many plugins: unisolated, one trivial call loaded ~243k tokens; isolated, ~575.
 ISOLATION = ["--tools", "", "--setting-sources", "project,local", "--strict-mcp-config",
-             "--disable-slash-commands", "--no-session-persistence", "--output-format", "json"]
+             "--disable-slash-commands", "--no-session-persistence", "--max-turns", "1", "--output-format", "json"]
 
 # The child gets an allow-list, not a filtered copy: any credential or endpoint override (ANTHROPIC_API_KEY,
 # ANTHROPIC_BASE_URL, cloud-provider switches, ...) could bill something other than the subscription or send
@@ -28,7 +28,7 @@ SUBSCRIPTION_LOGINS = {"claude.ai", "oauth_token"}
 
 # ponytail: the exit code / JSON for a limit hit is undocumented; this matches the documented message text
 # ("You've hit your session limit", "...weekly limit"). Tighten after observing a real one (issue 07).
-LIMIT = re.compile(r"hit your .{0,20}limit", re.I)
+LIMIT = re.compile(r"hit your .{0,20}limit|usage limit reached", re.I)
 
 
 def _env():
@@ -58,7 +58,7 @@ def claude(model, system, user, timeout=300):
     except ValueError:
         out = None
     text = str(out.get("result", "")) if isinstance(out, dict) else p.stdout
-    failed = p.returncode != 0 or not isinstance(out, dict) or out.get("is_error")
+    failed = p.returncode != 0 or not isinstance(out, dict) or out.get("is_error") or "result" not in out
     # A limit message can arrive as a failed call, or as the result text of an "ok" one. In the "ok" case the
     # model must have generated nothing: text that merely imitates the message (e.g. via a prompt-injected
     # abstract) always comes with output tokens and must not stop the run.

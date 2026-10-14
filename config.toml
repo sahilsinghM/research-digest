@@ -99,3 +99,8 @@ journals = [
   "Gut", "Hepatology", "J Hepatol", "J Am Acad Dermatol", "Kidney Int", "Sleep", "JAMA Psychiatry",
   "Lancet Psychiatry", "Eur Urol", "J Urol", "J Sex Med", "Cochrane Database Syst Rev",
 ]
+
+# Crossref has no abstracts for these (measured over 14 days: Nature 4/50, Cell 0/28), PubMed does.
+[[pubmed_extra]]
+area = "science"
+journals = ["Nature", "Cell", "Science", "Proc Natl Acad Sci U S A"]

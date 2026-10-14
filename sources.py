@@ -86,17 +86,19 @@ def fetch_crossref(issn, area, since):
     return list(parse_crossref(data, area))
 
 
-def parse_pubmed(xml, today):
+def parse_pubmed(xml, today, area="medical"):
     for a in ET.fromstring(xml).findall("PubmedArticle"):
         pmid = a.findtext(".//PMID")
+        doi = a.findtext(".//ArticleId[@IdType='doi']")
         t = a.find(".//ArticleTitle")
-        yield Paper(id=f"pmid:{pmid}", title=_text("".join(t.itertext())) if t is not None else "",
+        # The DOI is the id when there is one, so the same paper from Crossref and PubMed deduplicates.
+        yield Paper(id=f"doi:{doi}" if doi else f"pmid:{pmid}", title=_text("".join(t.itertext())) if t is not None else "",
                     abstract=" ".join(_text("".join(x.itertext())) for x in a.findall(".//AbstractText")),
-                    source="pubmed", area="medical", journal=a.findtext(".//Journal/Title") or "",
+                    source="pubmed", area=area, journal=a.findtext(".//Journal/Title") or "",
                     url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/", published=today.isoformat(), kind="peer")
 
 
-def fetch_pubmed(journals, since, today):
+def fetch_pubmed(journals, since, today, area="medical"):
     term = "(" + " OR ".join(f'"{j}"[ta]' for j in journals) + ")"
     ids = json.loads(get(EUTILS + "esearch.fcgi", {
         "db": "pubmed", "term": term, "datetype": "edat", "retmode": "json", "retmax": 300,
@@ -105,7 +107,7 @@ def fetch_pubmed(journals, since, today):
         return []
     time.sleep(0.4)  # NCBI allows ~3 requests/second without a key
     xml = get(EUTILS + "efetch.fcgi", {"db": "pubmed", "id": ",".join(ids), "retmode": "xml"})
-    return [p for p in parse_pubmed(xml, today) if p.title]
+    return [p for p in parse_pubmed(xml, today, area) if p.title]
 
 
 def parse_rxiv(data, server, area):
@@ -146,6 +148,9 @@ def fetch_all(cfg, since, today):
     for j in cfg["journal"]:
         jobs.append((j["name"], lambda j=j: fetch_crossref(j["issn"], j["area"], since)))
     jobs.append(("pubmed", lambda: fetch_pubmed(cfg["pubmed"]["journals"], since, today)))
+    # Journals whose Crossref records carry no abstracts (Nature, Cell, ...) are recovered through PubMed.
+    for g in cfg.get("pubmed_extra", []):
+        jobs.append((f"pubmed/{g['area']}", lambda g=g: fetch_pubmed(g["journals"], since, today, g["area"])))
     for server, area in (("biorxiv", "science"), ("medrxiv", "medical")):
         jobs.append((server, lambda s=server, a=area: fetch_rxiv(s, a, since, today)))
     jobs.append(("nber", lambda: fetch_nber(today)))
@@ -153,7 +158,8 @@ def fetch_all(cfg, since, today):
     for name, fn in jobs:
         try:
             for p in fn():
-                papers.setdefault(p.id, p)
+                if p.id not in papers or len(p.abstract) > len(papers[p.id].abstract):  # keep the copy with text
+                    papers[p.id] = p
         except Exception as e:
             log.warning("source %s failed: %s", name, e)
             failed.append(name)

@@ -114,3 +114,19 @@ def test_network_failures_become_telegram_errors_without_the_token(net):
     with pytest.raises(TelegramError) as e:
         delivery._post(TOKEN, "c", "t", "HTML")
     assert "SECRET-TOKEN" not in str(e.value)
+
+
+def test_a_read_timeout_becomes_a_telegram_error_without_the_token(net):
+    net.outcomes[:] = [TimeoutError(f"timed out talking to https://api.telegram.org/bot{TOKEN}/sendMessage")]
+    with pytest.raises(TelegramError) as e:
+        delivery._post(TOKEN, "c", "t", "HTML")
+    assert "SECRET-TOKEN" not in str(e.value)
+
+
+def test_a_non_json_error_body_still_becomes_a_telegram_error_with_the_status(net):
+    err = urllib.error.HTTPError(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 502, "Bad Gateway", {},
+                                 io.BytesIO(b"<html>502 Bad Gateway</html>"))
+    net.outcomes[:] = [err]
+    with pytest.raises(TelegramError, match="502") as e:
+        delivery._post(TOKEN, "c", "t", "HTML")
+    assert "SECRET-TOKEN" not in str(e.value)

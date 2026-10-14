@@ -1,3 +1,5 @@
+import re
+
 from digest import clip, header_msg, paper_msg, teach_msg
 from sources import Paper
 
@@ -65,3 +67,22 @@ def test_teach_msg_has_name_explanation_example_and_escapes():
 def test_teach_msg_stays_under_limit_and_tolerates_missing_fields():
     assert len(teach_msg({"name": "n" * 9000, "explain": "e" * 9000, "example": "x" * 9000})) <= 4096
     assert teach_msg({})
+
+
+def _well_formed(m):
+    assert len(m) <= 4096
+    for tag in ("b", "i"):
+        assert m.count(f"<{tag}>") == m.count(f"</{tag}>")
+    assert not re.search(r"&(?!amp;|lt;|gt;|quot;|#)", m)  # no dangling or cut-off entity
+
+
+def test_messages_stay_whole_and_under_the_limit_even_when_escaping_expands_the_text():
+    hostile = {k: "&<" * 3000 for k in A}
+    _well_formed(paper_msg(P(title="<" * 3000, journal="&" * 3000), hostile))
+    _well_formed(teach_msg({"name": "&" * 3000, "explain": "<" * 3000, "example": "&<" * 3000}))
+    _well_formed(header_msg([(P(title="&<" * 3000), A)], 10, "2026-10-13", ["&<" * 3000] * 5))
+
+
+def test_normal_messages_are_not_shortened_by_the_safety_net():
+    m = paper_msg(P(), dict(A, found="f" * 480))
+    assert "f" * 480 in m

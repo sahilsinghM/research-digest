@@ -69,6 +69,7 @@ def test_isolation_flags_and_model(fake):
     assert args[args.index("--output-format") + 1] == "json"
     for flag in ("--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"):
         assert flag in args
+    assert args[args.index("--max-turns") + 1] == "1"  # a plain answer is one turn; never let it loop
     assert "--bare" not in args
 
 
@@ -122,6 +123,7 @@ def test_hang_is_cut_off_by_timeout(fake):
 
 @pytest.mark.parametrize("exit_code,output", [
     ("1", "You've hit your session limit · resets 3:45pm"),
+    ("1", "Claude AI usage limit reached|1760000000"),
     ("1", '{"is_error": true, "result": "You\'ve hit your weekly limit · resets Mon 12:00am"}'),
     ("0", '{"is_error": false, "result": "You\'ve hit your session limit · resets 3:45pm"}'),
 ])
@@ -188,3 +190,9 @@ def test_check_login_fails_on_nonzero_exit(fake):
 def test_check_login_ignores_api_key_in_environment(fake, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "leak-value")
     runner.check_login()  # must not raise; the key never reaches claude
+
+
+def test_missing_result_on_a_clean_exit_is_a_runner_error_not_a_keyerror(fake):
+    fake.set(out='{"is_error": false, "subtype": "success"}')
+    with pytest.raises(runner.RunnerError):
+        runner.claude("haiku", "s", "u")

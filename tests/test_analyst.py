@@ -171,3 +171,9 @@ def test_deep_read_bounds_abstract_length():
 def test_deep_read_rejects_a_reply_that_is_valid_json_but_not_an_object():
     for reply in ('[{"did": "x"}]', '"just a string"', "42"):
         assert deep_read(FakeRun(reply, reply), "m", P(), "p") is None  # (2 replies: non-JSON text is retried once)
+
+
+def test_triage_returns_only_the_ids_the_model_really_scored():
+    ps = [T("a"), T("b"), T("c")]
+    assert triage(FakeRun('[{"id": "a", "score": 3}, {"id": "c", "score": "bad"}]'), "m", ps, "profile") == {"a"}
+    assert triage(FakeRun("junk", "junk"), "m", ps, "profile") == set()

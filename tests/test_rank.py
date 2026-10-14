@@ -38,23 +38,6 @@ def test_pick_nothing_when_all_below_min():
 
 
 
-def test_pick_respects_quota_min_score_and_order():
-    ps = [P("f1", "finance", 9), P("f2", "finance", 8), P("f3", "finance", 7),
-          P("s1", "science", 4), P("m1", "medical", 6)]
-    got = pick(ps, {"finance": 2, "science": 2, "medical": 3}, max_papers=8, min_score=5)
-    assert [p.id for p in got] == ["f1", "f2", "m1"]
-
-
-def test_pick_caps_total():
-    ps = [P(f"f{i}", "finance", 9 - i * 0.1) for i in range(5)] + [P("m", "medical", 7)]
-    got = pick(ps, {"finance": 5, "medical": 3}, max_papers=3, min_score=5)
-    assert [p.id for p in got] == ["f0", "f1", "f2"]
-
-
-def test_pick_nothing_when_all_below_min():
-    assert pick([P("a", score=2)], {"finance": 2}, 8, 5) == []
-
-
 def test_prefilter_drops_papers_without_enough_abstract_to_judge():
     ps = [P("none", abstract=""), P("stub", abstract="Short teaser."), P("ok", abstract="x" * 100)]
     assert [p.id for p in prefilter(ps, [], min_abstract_chars=100)] == ["ok"]

@@ -32,18 +32,28 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
     papers = prefilter(store.new_only(fetched), cfg["keywords"]["medical"], r["min_abstract_chars"])
     notes = [f"sources failed: {', '.join(failed)}"] if failed else []
 
+    # Papers scored on an earlier run (and not yet sent) keep their score instead of being triaged again.
+    cached = store.cached_scores(papers)
+    for p in papers:
+        if p.id in cached:
+            p.score = cached[p.id]
+    fresh = [p for p in papers if p.id not in cached]
+
     # Triage must never eat the whole call cap (an outage backlog would then crash every day): keep the newest
     # papers that fit, leaving room for the deep reads and the concept, each of which may retry once.
     reserve = 2 * r["max_papers"] + 2
     room = max(1, (r["max_calls_per_run"] - reserve) // 2) * r["triage_batch"]
-    if len(papers) > room:
-        notes.append(f"{len(papers) - room} older papers not triaged (call cap)")
-        papers = sorted(papers, key=lambda p: p.published, reverse=True)[:room]
+    if len(fresh) > room:
+        notes.append(f"{len(fresh) - room} older papers not triaged (call cap)")
+        fresh = sorted(fresh, key=lambda p: p.published, reverse=True)[:room]
+        papers = [p for p in papers if p.id in cached or p in fresh]
 
     ask = analyst.CallCap(ask_model, r["max_calls_per_run"])
     done, stop = [], None
     try:
-        analyst.triage(ask, m["triage"], papers, profile, r["triage_batch"])
+        scored = analyst.triage(ask, m["triage"], fresh, profile, r["triage_batch"])
+        if not dry_run:
+            store.record_scores([p for p in fresh if p.id in scored])
         log.info("triage: %d papers scored, %d at or above the bar", len(papers),
                  sum(p.score >= r["min_score"] for p in papers))
         for p in pick(papers, cfg["quota"], r["max_papers"], r["min_score"]):
