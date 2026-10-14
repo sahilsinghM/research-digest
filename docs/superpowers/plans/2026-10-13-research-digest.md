@@ -1,5 +1,7 @@
 # Research Digest Agent Implementation Plan
 
+> **Superseded in part (2026-10-13):** Tasks 1-4 are done and stand. Tasks 5-8 are replaced by the issues derived from `docs/prd/2026-10-13-research-digest-prd.md` (subscription via headless Claude Code instead of the Anthropic API).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A cron-run Python script that fetches new papers, triages them with Haiku, deep-reads the best with Sonnet against a personal profile, and sends a Telegram digest.

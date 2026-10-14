@@ -1,5 +1,7 @@
 # Personal Research Digest Agent: Design
 
+> **Superseded in part (2026-10-13):** model calls now go through headless Claude Code on the owner's subscription, not the Anthropic API; there is no dollar cost cap (a per-run call cap replaces it) and no PDF full text in v1. See `docs/prd/2026-10-13-research-digest-prd.md`.
+
 Date: 2026-10-13
 
 ## Goal
