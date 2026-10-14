@@ -364,3 +364,30 @@ def test_the_real_usage_limit_message_is_logged_so_its_wording_can_be_observed(c
     with caplog.at_level(logging.WARNING, logger="agent"):
         go([P("a")], fake=FakeRun(limit_on_call=1))
     assert "You've hit your session limit" in caplog.text
+
+
+def test_a_concept_taught_yesterday_is_passed_to_the_model_to_avoid_today():
+    store = Store(":memory:")
+    go([P("a")], store=store)  # teaches "Drawdown"
+    _, fake, _ = go([P("b", "science")], store=store)
+    teach_call = [c for c in fake.calls if "one concept" in c[1].lower()][0]
+    assert json.loads(teach_call[2])["already_taught"] == ["Drawdown"]
+
+
+def test_dry_run_does_not_remember_the_concept():
+    store = Store(":memory:")
+    go([P("a")], store=store, dry_run=True)
+    assert store.recent_concepts() == []
+
+
+def test_a_concept_is_remembered_only_if_it_was_actually_sent():
+    store = Store(":memory:")
+
+    def flaky(text):
+        if "Today's concept" in text:
+            raise RuntimeError("telegram down")
+
+    import pytest
+    with pytest.raises(RuntimeError):
+        run(CFG, "profile", store, FakeRun(), fetch_of(P("a")), flaky, NOW)
+    assert store.recent_concepts() == []

@@ -81,7 +81,7 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
                 store.mark_sent(p)  # only after the message went out: a retry resends nothing already delivered
         if not stop:
             try:
-                concept = analyst.teach(ask, m["analyse"], done, profile)
+                concept = analyst.teach(ask, m["analyse"], done, profile, store.recent_concepts())
             except runner.UsageLimitReached as e:
                 log.warning("usage limit: %s", e)
                 stop, concept = "Claude usage limit reached", None
@@ -90,6 +90,8 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
                 concept = None
             if concept:
                 send(digest.teach_msg(concept))
+                if not dry_run:
+                    store.record_concept(str(concept["name"]), now)  # only after it was really sent
     elif not stop:
         send("\n".join([f"Nothing worth your time today ({len(papers)} new papers scanned)."] + notes))
 

@@ -52,3 +52,18 @@ def test_recording_a_score_never_unsends_a_paper_and_sending_keeps_it_scored():
     a.score = 3.0
     s.record_scores([a])
     assert s.new_only([P("a")]) == [] and s.cached_scores([P("a")]) == {"a": 3.0}
+
+
+def test_taught_concepts_come_back_newest_first_and_are_limited():
+    s = Store(":memory:")
+    for i, name in enumerate(["Overfitting", "Drawdown", "Sharpe ratio"]):
+        s.record_concept(name, NOW + timedelta(days=i))
+    assert s.recent_concepts(limit=2) == ["Sharpe ratio", "Drawdown"]
+    assert s.recent_concepts() == ["Sharpe ratio", "Drawdown", "Overfitting"]
+
+
+def test_recording_the_same_concept_twice_keeps_one_entry():
+    s = Store(":memory:")
+    s.record_concept("Drawdown", NOW)
+    s.record_concept("Drawdown", NOW + timedelta(days=1))
+    assert s.recent_concepts() == ["Drawdown"]

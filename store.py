@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 SCHEMA = """
 create table if not exists papers(id text primary key, title text, source text, score real, sent integer);
 create table if not exists runs(ts text);
+create table if not exists concepts(name text primary key, taught_at text);
 """
 
 
@@ -45,3 +46,11 @@ class Store:
             q = f"select id, score from papers where score is not null and id in ({','.join('?' * len(chunk))})"
             out.update(self.db.execute(q, chunk).fetchall())
         return out
+
+    def record_concept(self, name, when):
+        self.db.execute("insert into concepts values (?,?) on conflict(name) do update set taught_at=excluded.taught_at",
+                        (name, when.isoformat()))
+        self.db.commit()
+
+    def recent_concepts(self, limit=40):
+        return [r[0] for r in self.db.execute("select name from concepts order by taught_at desc limit ?", (limit,))]
