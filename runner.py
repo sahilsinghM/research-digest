@@ -26,9 +26,12 @@ SAFE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "TMPDIR", "TZ", "SHELL", 
             "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "no_proxy", "all_proxy"}
 SUBSCRIPTION_LOGINS = {"claude.ai", "oauth_token"}
 
-# ponytail: the exit code / JSON for a limit hit is undocumented; this matches the documented message text
-# ("You've hit your session limit", "...weekly limit"). Tighten after observing a real one (issue 07).
-LIMIT = re.compile(r"hit your .{0,20}limit|usage limit reached", re.I)
+# Wording taken from the strings inside the Claude Code program itself (v2.1.296): "You've hit your session /
+# weekly / Opus / Sonnet / Fable / fast limit", "monthly spend limit", "team's shared budget", "You've reached your
+# ... limit", "You're out of (extra) usage (credits)", "Usage limit reached", "Credit balance is too low".
+# The exit code / JSON for a limit hit is still undocumented, so the text decides; real hits are logged (issue 07).
+LIMIT = re.compile(r"hit your .{0,40}?(limit|budget)|reached your .{0,20}limit|out of (extra )?usage"
+                   r"|usage limit reached|credit balance (is )?too low", re.I)
 
 
 def _env():

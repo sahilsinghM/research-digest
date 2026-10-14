@@ -20,7 +20,7 @@ Deploy to the VPS safely. Human steps (secrets never pass through the developmen
 - [ ] A dedicated non-root user owns the deploy directory (NOT DONE by decision: Claude is logged in only as root via a credentials file; copying it would duplicate an OAuth refresh token and could break the other apps on the VPS. Deployed as root with folder 700 and secrets 600. Revisit with `claude setup-token` for a dedicated user.)
 - [x] The login self-check passes on the VPS (max plan, claude.ai login; no API key variables set there). The bogus-key-is-ignored proof was done on the dev machine.
 - [x] `agent.py --dry-run` completes on the VPS and prints a real digest (2m31s, exit 0)
-- [ ] The real usage-limit behavior is documented and detection adjusted (PENDING: the real wording is logged to agent.log when a limit is hit; read it then)
+- [ ] The real usage-limit behavior is documented and detection adjusted (wording now matched from strings inside the Claude Code program, 13 variants tested; the exit code / JSON of a real hit is still unobserved and is logged to agent.log when it happens)
 - [x] No secrets or personal profile content appear in the repository, logs or commit history (.env and profile.md are gitignored, mode 600; Telegram send test OK)
 
 ## Blocked by

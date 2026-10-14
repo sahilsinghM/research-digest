@@ -196,3 +196,44 @@ def test_missing_result_on_a_clean_exit_is_a_runner_error_not_a_keyerror(fake):
     fake.set(out='{"is_error": false, "subtype": "success"}')
     with pytest.raises(runner.RunnerError):
         runner.claude("haiku", "s", "u")
+
+
+# Wording taken from the strings inside the Claude Code program itself (v2.1.296).
+REAL_LIMIT_MESSAGES = [
+    "You've hit your session limit \u00b7 resets 3:45pm",
+    "You've hit your weekly limit \u00b7 resets Mon 12:00am",
+    "You've hit your Opus limit",
+    "You've hit your Sonnet limit",
+    "You've hit your Fable limit",
+    "You've hit your fast limit \u00b7 resets in 2h",
+    "You've hit your monthly spend limit.",
+    "You've hit your team's shared budget. /model to switch models.",
+    "You've reached your Fable limit",
+    "You're out of extra usage",
+    "You're out of usage credits. Run /usage-credits",
+    "Usage limit reached",
+    "Credit balance is too low",
+]
+
+
+@pytest.mark.parametrize("message", REAL_LIMIT_MESSAGES)
+def test_every_limit_wording_found_in_the_program_is_recognised_when_the_call_fails(fake, message):
+    fake.set(exit="1", out=message)
+    with pytest.raises(runner.UsageLimitReached):
+        runner.claude("haiku", "s", "u")
+
+
+@pytest.mark.parametrize("message", REAL_LIMIT_MESSAGES)
+def test_every_limit_wording_is_recognised_in_a_json_error_result_with_no_tokens_generated(fake, message):
+    import json
+    fake.set(out=json.dumps({"is_error": True, "result": message, "usage": {"output_tokens": 0}}))
+    with pytest.raises(runner.UsageLimitReached):
+        runner.claude("haiku", "s", "u")
+
+
+def test_ordinary_paper_text_about_usage_and_budgets_is_never_mistaken_for_a_limit(fake):
+    import json
+    for text in ("Firms hit their budget constraint in year two.", "The usage of credits rose; balance was too low.",
+                 "Households were out of savings."):
+        fake.set(out=json.dumps({"is_error": False, "result": text, "usage": {"output_tokens": 12}}))
+        assert runner.claude("haiku", "s", "u") == text
