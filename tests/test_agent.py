@@ -10,7 +10,8 @@ from store import Store
 NOW = datetime(2026, 10, 13, 1, 30, tzinfo=timezone.utc)
 with open("config.toml", "rb") as f:
     CFG = tomllib.load(f)
-ANALYSIS = json.dumps({"did": "d", "found": "f", "evidence": "e", "for_you": "y", "action": "a", "for_world": "w"})
+ANALYSIS = json.dumps({"headline": "h", "takeaway": "t", "for_you": "y", "action": "a", "trust": "moderate",
+                       "trust_why": "w", "prereads": [], "did": "d", "evidence": "e", "for_world": "fw"})
 CONCEPT = json.dumps({"name": "Drawdown", "explain": "how far a portfolio falls", "example": "your F&O algo"})
 
 
@@ -61,7 +62,7 @@ def go(papers, fake=None, store=None, failed=(), dry_run=False):
 
 def test_sends_header_then_one_message_per_paper_using_analyse_model():
     sent, fake, _ = go([P("a"), P("b", "science")])
-    assert len(sent) == 4 and "Research digest" in sent[0]
+    assert len(sent) == 4 and "Digest" in sent[0]
     assert "Title a" in sent[1] and "Title b" in sent[2] and "Drawdown" in sent[3]
     assert all(model == CFG["models"]["analyse"] for model, _, _ in fake.deep_calls())
 
@@ -148,9 +149,9 @@ def test_main_stops_before_fetching_when_login_check_fails(monkeypatch, capsys):
     assert "not logged in" in capsys.readouterr().out
 
 
-def test_header_names_the_most_important_paper():
-    sent, _, _ = go([P("a"), P("b")], fake=FakeRun(scores={"a": 6, "b": 9}))
-    assert "Most important: Title b" in sent[0]
+def test_header_lists_a_numbered_headline_per_paper():
+    sent, _, _ = go([P("a"), P("b", "science")], fake=FakeRun(scores={"a": 6, "b": 9}))
+    assert "1️⃣" in sent[0] and "2️⃣" in sent[0] and "h" in sent[0]
 
 
 def test_unparseable_concept_still_delivers_the_papers():
@@ -384,10 +385,55 @@ def test_a_concept_is_remembered_only_if_it_was_actually_sent():
     store = Store(":memory:")
 
     def flaky(text):
-        if "Today's concept" in text:
+        if "Idea of the day" in text:
             raise RuntimeError("telegram down")
 
     import pytest
     with pytest.raises(RuntimeError):
         run(CFG, "profile", store, FakeRun(), fetch_of(P("a")), flaky, NOW)
+    assert store.recent_concepts() == []
+
+
+def _with_prereads(*terms):
+    return json.dumps({"headline": "h", "takeaway": "t", "for_you": "y", "action": "a", "trust": "weak",
+                       "trust_why": "w", "did": "d", "evidence": "e", "for_world": "fw",
+                       "prereads": [{"term": t, "plain": "plain " + t, "example": ""} for t in terms]})
+
+
+def _deep_user_payloads(fake):
+    return [json.loads(c[2]) for c in fake.calls if "triage" not in c[1].lower() and "one concept" not in c[1].lower()]
+
+
+def test_terms_taught_in_a_pre_read_are_remembered_only_after_the_card_was_sent():
+    store = Store(":memory:")
+    go([P("a")], store=store, fake=FakeRun(_with_prereads("Spread", "Market making"), concept="junk"))
+    assert {"Spread", "Market making"} <= set(store.recent_concepts())
+
+    store2 = Store(":memory:")
+
+    def flaky(text):
+        if "Spread" in text and "Pre-read" in text:
+            raise RuntimeError("telegram down")
+
+    import pytest
+    with pytest.raises(RuntimeError):
+        run(CFG, "profile", store2, FakeRun(_with_prereads("Spread")), fetch_of(P("a")), flaky, NOW)
+    assert store2.recent_concepts() == []
+
+
+def test_a_term_taught_earlier_today_or_on_a_previous_day_is_passed_as_already_known():
+    store = Store(":memory:")
+    _, fake1, _ = go([P("a"), P("b", "science")], store=store,
+                     fake=FakeRun(_with_prereads("Spread"), _with_prereads("Spread", "Volatility"), scores={"a": 9, "b": 8}))
+    first, second = _deep_user_payloads(fake1)
+    assert first["already_known_terms"] == [] and second["already_known_terms"] == ["Spread"]
+    sent, _, _ = go([P("c")], store=store, fake=FakeRun(_with_prereads("Spread")))
+    assert "<b>Spread</b>" not in sent[1]  # the model repeated it anyway: dropped from the card
+    _, fake3, _ = go([P("d", "science")], store=store)
+    assert {"Spread", "Volatility"} <= set(_deep_user_payloads(fake3)[0]["already_known_terms"])
+
+
+def test_dry_run_records_no_terms():
+    store = Store(":memory:")
+    go([P("a")], store=store, dry_run=True, fake=FakeRun(_with_prereads("Spread")))
     assert store.recent_concepts() == []

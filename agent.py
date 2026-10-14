@@ -49,6 +49,7 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
         papers = [p for p in papers if p.id in cached or p in fresh]
 
     ask = analyst.CallCap(ask_model, r["max_calls_per_run"])
+    known = store.recent_concepts(200)  # terms already taught (newest first): never explain them again
     done, stop = [], None
     try:
         scored = analyst.triage(ask, m["triage"], fresh, profile, r["triage_batch"])
@@ -58,7 +59,7 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
                  sum(p.score >= r["min_score"] for p in papers))
         for p in pick(papers, cfg["quota"], r["max_papers"], r["min_score"]):
             try:
-                a = analyst.deep_read(ask, m["analyse"], p, profile)
+                a = analyst.deep_read(ask, m["analyse"], p, profile, known)
             except (runner.RunnerError, analyst.CallCapExceeded) as e:
                 if isinstance(e, runner.UsageLimitReached):
                     raise
@@ -67,6 +68,7 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
                 break
             if a:
                 done.append((p, a))
+                known = [x["term"] for x in a["prereads"]] + known  # so the next paper does not repeat them
             else:
                 log.warning("skipping %s: model reply was not valid JSON", p.id)
     except runner.UsageLimitReached as e:
@@ -79,9 +81,11 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
             send(digest.paper_msg(p, a))
             if not dry_run:
                 store.mark_sent(p)  # only after the message went out: a retry resends nothing already delivered
+                for x in a["prereads"]:
+                    store.record_concept(x["term"], now)
         if not stop:
             try:
-                concept = analyst.teach(ask, m["analyse"], done, profile, store.recent_concepts())
+                concept = analyst.teach(ask, m["analyse"], done, profile, known[:100])
             except runner.UsageLimitReached as e:
                 log.warning("usage limit: %s", e)
                 stop, concept = "Claude usage limit reached", None
