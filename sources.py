@@ -31,13 +31,13 @@ class Paper:
     score: float = 0.0
 
 
-def get(url, params=None, tries=3, backoff=1):
+def get(url, params=None, tries=3, backoff=1, timeout=30):
     if params:
         url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "research-digest/0.1"})
     for i in range(tries):
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.read()
         except (urllib.error.URLError, TimeoutError):
             if i == tries - 1:
@@ -63,7 +63,7 @@ def fetch_arxiv(q, area, since, n=100):
     time.sleep(3)  # arXiv API etiquette
     xml = get("https://export.arxiv.org/api/query", {"search_query": q, "sortBy": "submittedDate",
                                                       "sortOrder": "descending", "max_results": n},
-              tries=4, backoff=10)  # arXiv answers 429 for a long while after a burst: wait 10s, 20s, 40s
+              tries=4, backoff=10, timeout=90)  # slow answers and long 429 penalties are normal: wait 10s, 20s, 40s
     # The API trails real time by days (weekends); the window is wide and the store dedupes.
     cutoff = (since - timedelta(days=4)).isoformat()
     return [p for p in parse_arxiv(xml, area) if p.published >= cutoff]

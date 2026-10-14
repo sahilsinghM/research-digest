@@ -194,3 +194,21 @@ def test_arxiv_asks_for_patient_retries_because_its_rate_limit_penalty_is_long(m
     monkeypatch.setattr(sources, "get", lambda url, params=None, tries=3, backoff=1: seen.update(tries=tries, backoff=backoff) or ARXIV)
     sources.fetch_arxiv("q", "finance", date(2026, 10, 12))
     assert seen["backoff"] >= 10 and seen["tries"] >= 3
+
+
+def test_get_passes_the_timeout_through_and_arxiv_allows_a_slow_answer(monkeypatch):
+    seen = []
+
+    def urlopen(req, timeout):
+        seen.append(timeout)
+        return _Resp(b"ok")
+
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+    sources.get("http://x")
+    sources.get("http://x", timeout=90)
+    assert seen == [30, 90]
+    got = {}
+    monkeypatch.setattr(sources.time, "sleep", lambda s: None)
+    monkeypatch.setattr(sources, "get", lambda url, params=None, **kw: got.update(kw) or ARXIV)
+    sources.fetch_arxiv("q", "finance", date(2026, 10, 12))
+    assert got["timeout"] >= 90
