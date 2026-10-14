@@ -191,7 +191,7 @@ def test_get_gives_up_after_the_given_number_of_tries(monkeypatch):
 def test_arxiv_asks_for_patient_retries_because_its_rate_limit_penalty_is_long(monkeypatch):
     seen = {}
     monkeypatch.setattr(sources.time, "sleep", lambda s: None)
-    monkeypatch.setattr(sources, "get", lambda url, params=None, tries=3, backoff=1: seen.update(tries=tries, backoff=backoff) or ARXIV)
+    monkeypatch.setattr(sources, "get", lambda url, params=None, tries=3, backoff=1, **kw: seen.update(tries=tries, backoff=backoff) or ARXIV)
     sources.fetch_arxiv("q", "finance", date(2026, 10, 12))
     assert seen["backoff"] >= 10 and seen["tries"] >= 3
 
