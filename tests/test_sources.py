@@ -142,3 +142,55 @@ def test_when_a_paper_comes_from_two_sources_the_copy_with_the_abstract_wins(mon
     assert [p.abstract for p in papers] == ["A long recovered abstract."]
     papers, _, _ = _fetch_all_with(monkeypatch, [full], {"science": [bare]})
     assert [p.abstract for p in papers] == ["A long recovered abstract."]
+
+
+class _Resp:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self.body
+
+
+def _flaky_urlopen(monkeypatch, outcomes):
+    import urllib.error
+    sleeps = []
+
+    def urlopen(req, timeout):
+        out = outcomes.pop(0)
+        if out == 429:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, None)
+        return _Resp(out)
+
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(sources.time, "sleep", sleeps.append)
+    return sleeps
+
+
+def test_get_backs_off_exponentially_from_the_given_base_and_then_succeeds(monkeypatch):
+    sleeps = _flaky_urlopen(monkeypatch, [429, 429, b"ok"])
+    assert sources.get("http://x", tries=3, backoff=10) == b"ok"
+    assert sleeps == [10, 20]
+
+
+def test_get_gives_up_after_the_given_number_of_tries(monkeypatch):
+    import urllib.error
+
+    import pytest
+    _flaky_urlopen(monkeypatch, [429, 429, 429])
+    with pytest.raises(urllib.error.HTTPError):
+        sources.get("http://x", tries=3, backoff=1)
+
+
+def test_arxiv_asks_for_patient_retries_because_its_rate_limit_penalty_is_long(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(sources.time, "sleep", lambda s: None)
+    monkeypatch.setattr(sources, "get", lambda url, params=None, tries=3, backoff=1: seen.update(tries=tries, backoff=backoff) or ARXIV)
+    sources.fetch_arxiv("q", "finance", date(2026, 10, 12))
+    assert seen["backoff"] >= 10 and seen["tries"] >= 3
