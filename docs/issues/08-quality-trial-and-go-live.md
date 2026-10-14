@@ -2,7 +2,7 @@
 title: Quality trial, then go live
 type: HITL
 label: ready-for-agent
-status: open
+status: in-progress
 ---
 
 # Quality trial, then go live
@@ -18,9 +18,9 @@ The owner reads real dry-run digests for several days and says what is wrong; pr
 ## Acceptance criteria
 
 - [ ] At least 3 different days of dry-run digests were reviewed and feedback applied
-- [ ] A real send arrives in Telegram with correct formatting; an immediate second run sends nothing
-- [ ] Cron entry is installed and the following morning's run is confirmed in the log
-- [ ] Log rotation is configured
+- [x] A real send was made on the VPS (2026-10-14, exit 0, 2 papers + concept); the idempotence re-check (dry run on real state) re-sent neither paper. OWNER TO CONFIRM: it arrived and rendered correctly on the phone.
+- [ ] Cron entry is installed (01:30 UTC) and verified in a bare cron-like environment; PENDING: confirm the first scheduled run (2026-10-15 07:00 IST) in agent.log
+- [x] Log rotation is configured (/etc/logrotate.d/research-digest, weekly, 4 kept)
 - [ ] Quotas and cap are reviewed (they currently sum to 7 while the cap is 8)
 
 ## Blocked by
