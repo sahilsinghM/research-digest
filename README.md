@@ -16,24 +16,31 @@ cp profile.example.md profile.md        # fill it in; it is gitignored and sent 
 
 Needs Claude Code installed and logged in with a subscription (`claude auth status` shows `claude.ai` or `oauth_token`).
 
-## VPS (currently `/root/research-digest`, runs as root, UTC clock)
+## VPS (`/home/digest/research-digest`, runs as the low-privilege `digest` user, UTC clock)
 
-- `.env` (mode 600): `TELEGRAM_BOT_TOKEN=` and `TELEGRAM_CHAT_ID=`. Get the chat id with `python3 chat_id.py`
-  after messaging the bot once.
-- `profile.md` (mode 600) lives only on the VPS and this dev machine, never in git.
-- Cron, 01:30 UTC = 07:00 IST, logging to `agent.log` (rotated weekly by `/etc/logrotate.d/research-digest`):
+- The `digest` user has no password and no SSH keys. It logs in to Claude with a subscription token:
+  run `claude setup-token` on a machine where you are logged in, and put `CLAUDE_CODE_OAUTH_TOKEN=...` in the
+  server `.env`. The token lasts about a year; when a run fails with a "not logged in" notice, make a new one.
+- `.env` (mode 600): `CLAUDE_CODE_OAUTH_TOKEN=`, `TELEGRAM_BOT_TOKEN=`, `TELEGRAM_CHAT_ID=`. Get the chat id with
+  `python3 chat_id.py` after messaging the bot once.
+- `profile.md` (mode 600) lives only on the VPS and the dev machine, never in git. Same for `state.db`.
+- `claude` is a private copy in `/home/digest/.local/bin` (cron does not have it on its PATH by default).
+- Cron (as `digest`), 01:30 UTC = 07:00 IST, logging to `agent.log` (rotated weekly by
+  `/etc/logrotate.d/research-digest`):
   ```
-  30 1 * * * cd /root/research-digest && PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin && export PATH && set -a && . ./.env && set +a && .venv/bin/python agent.py >> /root/research-digest/agent.log 2>&1
+  30 1 * * * cd /home/digest/research-digest && PATH=/home/digest/.local/bin:/usr/local/bin:/usr/bin:/bin && export PATH && set -a && . ./.env && set +a && .venv/bin/python agent.py >> /home/digest/research-digest/agent.log 2>&1
   ```
-  `claude` lives in `/root/.local/bin`, which cron does not have on its PATH, hence the explicit PATH.
-- Deploy (never `rsync -a`: it copies this machine's owner and permissions onto the server):
+- Deploy (never plain `rsync -a`: it copies this machine's owner and permissions onto the server):
   ```bash
-  rsync -rlt --no-perms --no-owner --no-group --chmod=D700,F600 \
+  rsync -rlt --no-perms --no-owner --no-group --chown=digest:digest --chmod=D700,F600 \
     --exclude=.git --exclude=.venv --exclude=.superpowers --exclude=__pycache__ --exclude=.pytest_cache \
     --exclude=state.db --exclude=.lock --exclude=agent.log --exclude=.env --exclude=profile.md \
-    ./ root@HOST:/root/research-digest/
+    ./ root@HOST:/home/digest/research-digest/
   ```
-- Pause: `crontab -e` and comment the line. A run is safe to repeat: papers already sent are never resent.
+- Pause: `crontab -u digest -e` (as root) and comment the line. A run is safe to repeat: papers already sent are
+  never resent.
+- Fallback: the old root copy in `/root/research-digest` is no longer scheduled. Delete it once the new setup has
+  run well for a few days (it still holds a copy of the Telegram token and profile).
 
 ## Tuning (`config.toml`)
 

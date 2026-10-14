@@ -51,12 +51,15 @@ pre-read) -> `digest.py` cards -> `delivery.py` Telegram. `runner.py` is the onl
 
 ## The VPS
 
-`root@178.104.65.133`, `/root/research-digest`, clock is UTC, cron `30 1 * * *` (= 07:00 IST), log `agent.log`
-(logrotate weekly). It also runs other people-facing workloads (Docker apps, other cron jobs, other `claude`
-processes sharing the same subscription allowance): do not touch anything outside the deploy folder, and back up
-the crontab before editing it. `claude` is in `/root/.local/bin`, which cron lacks, so the cron line sets PATH.
-Deploy with the README's rsync flags only: plain `rsync -a` once left the folder group-writable and files owned by
-an unknown uid. Run `chmod 700` on the folder and `600` on `.env`/`profile.md`/`state.db` after any deploy.
+`root@178.104.65.133` (ssh as root for admin only). The app lives at `/home/digest/research-digest` and runs as the
+low-privilege `digest` user (token login via `CLAUDE_CODE_OAUTH_TOKEN` in its `.env`, own copy of the `claude`
+binary in `/home/digest/.local/bin`). Clock is UTC; cron `30 1 * * *` (= 07:00 IST) in `digest`'s crontab; log
+`agent.log` (logrotate weekly). The box also runs the owner's other workloads (Docker apps, other cron jobs, other
+`claude` processes sharing the same subscription allowance): do not touch anything outside the deploy folders, and
+back up the crontab before editing it. Never copy root's `/root/.claude/.credentials.json` to another user (two
+copies of an OAuth refresh token can invalidate each other and break the other apps). Deploy with the README's rsync
+flags only: plain `rsync -a` once left the folder group-writable and files owned by an unknown uid. The old root copy
+`/root/research-digest` is an unscheduled fallback; remove it once the new setup has proven itself.
 
 ## Parked / future work
 
@@ -64,7 +67,7 @@ an unknown uid. Run `chmod 700` on the folder and `600` on `.env`/`profile.md`/`
   lowering the science bar, a daily wildcard slot, or leaving it. Decide after a few days of real digests.
 - **Always-on bot** (docs/issues/11): a long-running Telegram bot with buttons ("explain simpler", thumbs up/down
   feeding the ranking, questions about a paper). Needs a service that stays up, not cron.
-- Dedicated non-root user on the VPS (needs `claude setup-token`; see CHANGELOG for status).
+- The setup-token login lasts about a year: re-create it when runs report "not logged in".
 - Usage-limit detection matches the wording found inside the Claude Code program; the exit code / JSON of a real
   hit is still unobserved and is logged (`usage limit: ...` in `agent.log`) when it happens.
 - Per-source watermarks (a one-source outage can still lose that source's day); throwaway `CLAUDE_CONFIG_DIR`.
