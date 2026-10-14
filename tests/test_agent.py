@@ -357,3 +357,10 @@ def test_dry_run_records_no_scores():
     store = Store(":memory:")
     go([P("a")], store=store, dry_run=True)
     assert store.cached_scores([P("a")]) == {}
+
+
+def test_the_real_usage_limit_message_is_logged_so_its_wording_can_be_observed(caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="agent"):
+        go([P("a")], fake=FakeRun(limit_on_call=1))
+    assert "You've hit your session limit" in caplog.text

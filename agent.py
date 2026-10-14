@@ -69,7 +69,8 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
                 done.append((p, a))
             else:
                 log.warning("skipping %s: model reply was not valid JSON", p.id)
-    except runner.UsageLimitReached:
+    except runner.UsageLimitReached as e:
+        log.warning("usage limit: %s", e)  # keeps the real wording/exit behaviour for tightening the detection
         stop = "Claude usage limit reached"
 
     if done:
@@ -81,7 +82,8 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
         if not stop:
             try:
                 concept = analyst.teach(ask, m["analyse"], done, profile)
-            except runner.UsageLimitReached:
+            except runner.UsageLimitReached as e:
+                log.warning("usage limit: %s", e)
                 stop, concept = "Claude usage limit reached", None
             except (runner.RunnerError, analyst.CallCapExceeded) as e:  # the concept is a bonus, never a blocker
                 log.warning("no teach-me today: %s", e)
