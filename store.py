@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timedelta
 
@@ -5,6 +6,8 @@ SCHEMA = """
 create table if not exists papers(id text primary key, title text, source text, score real, sent integer);
 create table if not exists runs(ts text);
 create table if not exists concepts(name text primary key, taught_at text);
+create table if not exists path_cache(path text, key text, payload text, primary key(path, key));
+create table if not exists path_done(path text, key text, done_at text, primary key(path, key));
 """
 
 
@@ -54,3 +57,17 @@ class Store:
 
     def recent_concepts(self, limit=40):
         return [r[0] for r in self.db.execute("select name from concepts order by taught_at desc limit ?", (limit,))]
+
+    def get_path_cache(self, path):
+        return {k: json.loads(p) for k, p in self.db.execute("select key, payload from path_cache where path=?", (path,))}
+
+    def put_path_cache(self, path, key, payload):
+        self.db.execute("insert or replace into path_cache values (?,?,?)", (path, key, json.dumps(payload)))
+        self.db.commit()
+
+    def done_steps(self, path):
+        return {r[0] for r in self.db.execute("select key from path_done where path=?", (path,))}
+
+    def mark_step_done(self, path, key, when):
+        self.db.execute("insert or replace into path_done values (?,?,?)", (path, key, when.isoformat()))
+        self.db.commit()

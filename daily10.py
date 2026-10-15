@@ -1,11 +1,14 @@
 """Build today's Daily 10: the next step of the reading path as one short message."""
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import analyst
 import digest
 import paths
 
+log = logging.getLogger("daily10")
 PATHS_DIR = Path(__file__).parent / "paths"
 
 
@@ -13,6 +16,7 @@ PATHS_DIR = Path(__file__).parent / "paths"
 class Daily10:
     message: str
     terms: list  # pre-read terms taught today, so they are never explained again
+    commit: Callable  # call after the message was really delivered: marks the step done
 
 
 def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None):
@@ -20,9 +24,18 @@ def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None
     if not f.get("enabled"):
         return None
     name, entries = paths.load_path((paths_dir or PATHS_DIR) / f"{f['path']}.toml")
-    step = paths.build_step(get_json, entries, 0)  # progress through the path arrives with the next slice
+    steps, flagged = paths.load_steps(get_json, store, name, entries)
+    for e, reason in flagged:
+        log.warning("path entry skipped: %s", reason)
+    done = store.done_steps(name)
+    todo = [s for s in steps if paths.entry_key(s.entry) not in done]
+    if not todo:
+        return None  # the path is complete
+    step = todo[0]
     lesson = analyst.lesson(ask, cfg["models"]["analyse"], step, profile, known_terms)
     if lesson is None:
         return None
-    msg = digest.daily10_msg(step, lesson, [], step.index + 1, step.total, name)
-    return Daily10(msg, [t["term"] for t in lesson["prereads"]])
+    notes = [f"Skipped, could not verify: {e['title']}" for e, _ in flagged]
+    msg = digest.daily10_msg(step, lesson, [], len(steps) - len(todo) + 1, len(steps), name, notes)
+    key = paths.entry_key(step.entry)
+    return Daily10(msg, [t["term"] for t in lesson["prereads"]], lambda: store.mark_step_done(name, key, now))

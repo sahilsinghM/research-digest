@@ -67,3 +67,17 @@ def test_recording_the_same_concept_twice_keeps_one_entry():
     s.record_concept("Drawdown", NOW)
     s.record_concept("Drawdown", NOW + timedelta(days=1))
     assert s.recent_concepts() == ["Drawdown"]
+
+
+def test_path_cache_roundtrip_and_isolated_per_path():
+    s = Store(":memory:")
+    s.put_path_cache("P1", "k|1973", {"work": {"id": "W1"}, "built_on": [], "led_to": []})
+    assert s.get_path_cache("P1") == {"k|1973": {"work": {"id": "W1"}, "built_on": [], "led_to": []}}
+    assert s.get_path_cache("P2") == {}
+
+
+def test_steps_marked_done_are_remembered_per_path_and_marking_twice_is_fine():
+    s = Store(":memory:")
+    s.mark_step_done("P1", "k|1973", NOW)
+    s.mark_step_done("P1", "k|1973", NOW + timedelta(days=1))
+    assert s.done_steps("P1") == {"k|1973"} and s.done_steps("P2") == set()

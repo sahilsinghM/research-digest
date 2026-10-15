@@ -41,9 +41,15 @@ def reconstruct_abstract(inv):
     return " ".join(words[i] for i in sorted(words))
 
 
+def tidy_title(t):
+    """Old records are often SHOUTED in capitals; show those in title case."""
+    letters = [c for c in t if c.isalpha()]
+    return t.title() if letters and sum(c.isupper() for c in letters) / len(letters) > 0.8 else t
+
+
 def parse_work(w):
     oa = w.get("open_access") or {}
-    return Work(id=str(w.get("id", "")).rsplit("/", 1)[-1], title=w.get("display_name") or "",
+    return Work(id=str(w.get("id", "")).rsplit("/", 1)[-1], title=tidy_title(w.get("display_name") or ""),
                 year=w.get("publication_year") or 0, cited_by=w.get("cited_by_count") or 0,
                 type=w.get("type") or "", abstract=reconstruct_abstract(w.get("abstract_inverted_index")),
                 oa_url=(oa.get("oa_url") or "") if oa.get("is_oa") else "", doi_url=w.get("doi") or "",
@@ -65,7 +71,7 @@ def resolve(get_json, entry):
     """Find the original landmark paper for a reading-list entry. Returns (Work, "") or (None, why-not).
     Only a confident match is accepted; reprints and book-chapter copies lose to the original article."""
     title, year, surnames = entry["title"], entry.get("year"), entry.get("authors") or []
-    params = {"search": title, "per_page": 10, "select": FIELDS}
+    params = {"search": title, "per_page": 25, "sort": "cited_by_count:desc", "select": FIELDS}
     if year:
         params["filter"] = f"publication_year:{year - 1}-{year + 1}"
     works = [parse_work(w) for w in get_json("/works", params).get("results", [])]

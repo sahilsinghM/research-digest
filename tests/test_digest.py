@@ -122,8 +122,7 @@ def test_clip():
 
 # ---- Daily 10 ----
 
-import paths  # noqa: E402
-from oa_fixtures import FakeOpenAlex, W  # noqa: E402
+from oa_fixtures import W, make_step  # noqa: E402
 
 _SH = W("W8", "Capital Asset Prices", 1964, 19365, authors=("William F. Sharpe",))
 _HE = W("W21", "A Closed-Form Solution for Options", 1993, 8762, refs=("W1",))
@@ -132,7 +131,7 @@ _HE = W("W21", "A Closed-Form Solution for Options", 1993, 8762, refs=("W1",))
 def _step(abstract="Options priced correctly.", oa="https://x/bs.pdf"):
     bs = W("W1", "The Pricing of Options and Corporate Liabilities", 1973, 28883, refs=("W8",), abstract=abstract,
            oa=oa, authors=("Fischer Black", "Myron Scholes"), doi="https://doi.org/10.1086/260062")
-    return paths.build_step(FakeOpenAlex(bs, _SH, _HE), [{"title": bs["display_name"], "authors": ["Black"], "year": 1973}], 0)
+    return make_step(bs, built_on=[_SH], led_to=[_HE])
 
 
 LESSON = {"headline": "A fair price for an option", "idea": ["Line one.", "Line two."], "look_for": "the hedge argument",
@@ -169,8 +168,7 @@ def test_background_note_appears_only_when_the_abstract_is_missing():
 
 
 def test_daily10_notes_and_missing_neighbours_are_handled():
-    lonely = paths.build_step(FakeOpenAlex(W("W1", "Only Paper", 1900, 3, abstract="x" * 50, authors=("A B",))),
-                              [{"title": "Only Paper", "authors": [], "year": 1900}], 0)
+    lonely = make_step(W("W1", "Only Paper", 1900, 3, abstract="x" * 50, authors=("A B",)))
     m = daily10_msg(lonely, LESSON, [], 1, 1, "P", ["sources failed: nber"])
     assert "Built on" not in m and "Led to" not in m and "sources failed: nber" in m
 

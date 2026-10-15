@@ -127,3 +127,10 @@ def test_http_get_json_gives_up_with_a_clear_error_and_does_not_retry_client_err
     net.outcomes[:] = [TimeoutError("slow")] * 3
     with pytest.raises(openalex.OpenAlexError):
         openalex.http_get_json("/works", {})
+
+
+def test_resolve_asks_for_the_most_cited_matches_first_so_generic_titles_find_the_canonical_record():
+    api = FakeOpenAlex(BS)
+    openalex.resolve(api, {"title": BS["display_name"], "authors": ["Black"], "year": 1973})
+    params = api.calls[0][1]
+    assert params["sort"] == "cited_by_count:desc" and params["per_page"] >= 20

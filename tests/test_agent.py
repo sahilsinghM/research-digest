@@ -467,3 +467,41 @@ def test_the_daily10_is_the_first_message_and_uses_the_real_data_shape(tmp_path,
 def test_without_a_citation_client_the_daily10_is_simply_off():
     sent, _, _ = go([P("a")])
     assert not any("Daily 10" in m for m in sent)
+
+
+def _path_dir(tmp_path, monkeypatch, steps=2):
+    import daily10
+    body = 'name = "Finance"\n' + "".join(
+        f'[[step]]\ntitle = "Paper {i}"\nauthors = ["Auth"]\nyear = {1960 + i}\n' for i in range(steps))
+    (tmp_path / "p.toml").write_text(body)
+    monkeypatch.setattr(daily10, "PATHS_DIR", tmp_path)
+    return FakeOpenAlex(*[W(f"W{i}", f"Paper {i}", 1960 + i, 100 + i, authors=("Ann Auth",), abstract="x" * 80)
+                          for i in range(steps)])
+
+
+_LESSON_T = json.dumps({"headline": "Idea", "idea": ["One."], "look_for": "x", "your_sentence": "S ___.",
+                        "prereads": [{"term": "Hedge", "plain": "cut risk"}], "recall": [{"q": "Q?", "a": "A."}]})
+
+
+def test_a_delivered_daily10_advances_the_path_and_remembers_its_terms(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, get_json=api)
+    assert store.done_steps("Finance") == {"Paper 0|1960"} and "Hedge" in store.recent_concepts()
+
+
+def test_a_failed_send_leaves_the_step_and_terms_untouched(tmp_path, monkeypatch):
+    import pytest
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+
+    def boom(text):
+        raise RuntimeError("telegram down")
+
+    with pytest.raises(RuntimeError):
+        run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), boom, NOW, get_json=api)
+    assert store.done_steps("Finance") == set() and "Hedge" not in store.recent_concepts()
+
+
+def test_a_dry_run_never_advances_the_path(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, dry_run=True, get_json=api)
+    assert store.done_steps("Finance") == set() and store.recent_concepts() == []

@@ -248,8 +248,7 @@ def test_prompt_asks_for_plain_words_short_fields_and_assumes_a_beginner():
 
 # ---- the Daily 10 lesson ----
 
-from oa_fixtures import FakeOpenAlex, W  # noqa: E402
-import paths  # noqa: E402
+from oa_fixtures import W, make_step  # noqa: E402
 
 _BS = W("W1", "The Pricing of Options and Corporate Liabilities", 1973, 28883, abstract="Options priced correctly.",
         authors=("Fischer Black", "Myron Scholes"))
@@ -262,8 +261,8 @@ _RAW_LESSON = {"headline": "A fair price for an option", "idea": ["a", "b", "c",
 
 
 def _step(abstract="Options priced correctly."):
-    work = W("W1", _BS["display_name"], 1973, 28883, abstract=abstract, authors=("Fischer Black",))
-    return paths.build_step(FakeOpenAlex(work), [{"title": work["display_name"], "authors": ["Black"], "year": 1973}], 0)
+    return make_step(W("W1", _BS["display_name"], 1973, 28883, abstract=abstract, authors=("Fischer Black",)),
+                     built_on=[W("W8", "Capital Asset Prices", 1964, 19365)], led_to=[W("W21", "Heston", 1993, 8762)])
 
 
 def test_lesson_is_bounded_and_keeps_only_known_fields():
@@ -280,6 +279,8 @@ def test_lesson_sends_the_step_as_one_json_data_object_with_facts_from_data():
     data = json.loads(user)
     assert data["year"] == 1973 and data["cited_by"] == 28883 and data["abstract"] == "Options priced correctly."
     assert data["already_known_terms"] == ["Spread"] and "I AM THE PROFILE" in system
+    assert [x["title"] for x in data["built_on"]] == ["Capital Asset Prices"] and data["led_to"][0]["year"] == 1993
+    assert data["why_here"] == ""
     assert "study session" in system.lower() and "beginner" in system.lower()
     assert "never state citation counts" in system.lower()
 

@@ -57,6 +57,10 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False, get_jso
     if d10:
         send(d10.message)
         known = d10.terms + known
+        if not dry_run:  # only after delivery: the step counts as done and its terms as taught
+            d10.commit()
+            for term in d10.terms:
+                store.record_concept(term, now)
     try:
         scored = analyst.triage(ask, m["triage"], fresh, profile, r["triage_batch"])
         if not dry_run:

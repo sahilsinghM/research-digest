@@ -48,3 +48,12 @@ class FakeOpenAlex:
             res.sort(key=lambda w: -w["cited_by_count"])
             return {"results": res[:n], "meta": {"count": len(res)}}
         raise AssertionError(f"unexpected query {path} {params}")
+
+
+def make_step(work_json, built_on=(), led_to=(), index=0, total=1, entry=None):
+    """A Step built directly from OpenAlex-shaped dicts (no service calls)."""
+    import openalex
+    import paths
+    w = openalex.parse_work(work_json)
+    return paths.Step(index, total, entry or {"title": w.title, "authors": [], "year": w.year, "note": ""},
+                      w, [openalex.parse_work(x) for x in built_on], [openalex.parse_work(x) for x in led_to])
