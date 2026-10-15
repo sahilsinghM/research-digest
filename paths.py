@@ -52,7 +52,13 @@ def load_path(file):
 
 
 def entry_key(entry):
+    """The identity of a lesson (done or not). Editing authors does not change it."""
     return f"{entry['title']}|{entry['year']}"
+
+
+def resolution_key(entry):
+    """The identity of a match in the cache. Authors are part of it, so fixing them re-resolves the entry."""
+    return f"{entry_key(entry)}|{','.join(sorted(a.casefold() for a in entry['authors']))}"
 
 
 def _edges(get_json, w, members):
@@ -84,14 +90,14 @@ def _edges(get_json, w, members):
     return sorted(built, key=lambda x: x.year), sorted(led, key=lambda x: x.year)
 
 
-def load_steps(get_json, store, name, entries):
+def load_steps(get_json, store, name, entries, persist=True):
     """Verify every entry against the citation data and connect them. Returns (steps, flagged): the verified steps
     in order, and (entry, reason) for each entry that could not be verified. Results are cached in the store, so
-    later days need no outside calls."""
+    later days need no outside calls. `persist=False` (a dry run) reads the cache but never writes it."""
     cache = store.get_path_cache(name)
     members, flagged = {}, []
     for e in entries:
-        k = entry_key(e)
+        k = resolution_key(e)
         if k in cache:
             members[k] = openalex.Work(**cache[k]["work"])
             continue
@@ -103,7 +109,7 @@ def load_steps(get_json, store, name, entries):
     by_id = {w.id: w for w in members.values()}
     steps = []
     for e in entries:
-        k = entry_key(e)
+        k = resolution_key(e)
         if k not in members:
             continue
         if k in cache:
@@ -111,8 +117,9 @@ def load_steps(get_json, store, name, entries):
             led = [openalex.Work(**x) for x in cache[k]["led_to"]]
         else:
             built, led = _edges(get_json, members[k], by_id)
-            store.put_path_cache(name, k, {"work": asdict(members[k]), "built_on": [asdict(x) for x in built],
-                                           "led_to": [asdict(x) for x in led]})
+            if persist:
+                store.put_path_cache(name, k, {"work": asdict(members[k]), "built_on": [asdict(x) for x in built],
+                                               "led_to": [asdict(x) for x in led]})
         steps.append(Step(len(steps), 0, e, members[k], built, led))
     for s in steps:
         s.total = len(steps)

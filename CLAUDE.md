@@ -22,6 +22,18 @@ fetch (`sources.py`) -> drop already-sent (`store.py`) -> prefilter (`rank.py`: 
 (quota per area, min score) -> deep read with the stronger model (`analyst.deep_read`, plain-language JSON with a
 pre-read) -> `digest.py` cards -> `delivery.py` Telegram. `runner.py` is the only code that starts `claude`.
 
+## The Daily 10 (foundations track)
+
+`daily10.prepare()` builds the day's lesson from `paths/<name>.toml` (config `[foundations] path`). `openalex.py`
+resolves each landmark (title, surnames, year) against citation data; `paths.py` caches the verified steps and their
+built-on/led-to links (members of the path first, then same-topic articles on the right side of time). Facts shown
+(year, citation count, neighbours) come only from that data; the model writes explanations only, and lines where it
+makes its own citation claims are dropped. Spaced recall lives in the `cards` table (next review scheduled from the
+day a card was actually shown). Rules: state is keyed by the path file stem, a step is done only after delivery, one
+lesson per calendar day, dry runs never write, and an OpenAlex outage gives a recall-only day. Do not sort the
+OpenAlex title search by citations (it buries the real paper). Edit the list freely: an entry that cannot be matched is
+skipped with a note, and changing an entry's authors re-resolves it.
+
 ## Rules (each learned the hard way)
 
 - **Subscription only, never an API key.** `runner.py` hands `claude` an allow-listed environment and checks

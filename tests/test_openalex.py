@@ -136,3 +136,15 @@ def test_resolve_searches_in_relevance_order_with_a_wide_page_never_sorted_by_ci
     openalex.resolve(api, {"title": BS["display_name"], "authors": ["Black"], "year": 1973})
     params = api.calls[0][1]
     assert "sort" not in params and params["per_page"] >= 20
+
+
+def test_null_fields_from_the_service_never_crash_parsing_or_matching():
+    nasty = {"id": "https://openalex.org/W77", "display_name": None, "publication_year": None, "cited_by_count": None,
+             "type": None, "referenced_works": None, "abstract_inverted_index": None, "open_access": None, "doi": None,
+             "authorships": [{"author": {"display_name": None}}, {"author": None}, {}], "primary_topic": {"subfield": None}}
+    w = openalex.parse_work(nasty)
+    assert (w.title, w.year, w.cited_by, w.type, w.authors, w.references, w.topic) == ("", 0, 0, "", [], [], "")
+    ok = W("W78", "Some Real Title", 1990, 10, authors=("Ann Author",))
+    ok["authorships"].append({"author": {"display_name": None}})
+    work, _ = openalex.resolve(FakeOpenAlex(ok), {"title": "Some Real Title", "authors": ["Author"], "year": 1990})
+    assert work.id == "W78" and work.authors == ["Ann Author"]

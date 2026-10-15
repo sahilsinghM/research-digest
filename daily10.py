@@ -29,35 +29,39 @@ class LessonUnavailable(Exception):
         self.reason, self.note, self.fallback = reason, note, fallback
 
 
-def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None, notes=()):
+def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None, notes=(), dry_run=False):
     f = cfg.get("foundations") or {}
     if not f.get("enabled"):
         return None
-    today = now.date()
+    today, pid = now.date(), f["path"]  # state is keyed by the file's name, not the display name inside it
+    last = store.last_step_done(pid)
+    if last and last.date() == today:
+        return None  # one idea a day: a rerun the same day (after a delivered lesson) must not deliver another
+    intervals = tuple(f.get("recall_days", (1, 3, 7, 21)))
 
     def due():
-        return store.due_cards(today, f.get("recall_days", [1, 3, 7, 21]), f.get("max_recall_per_day", 2))
+        return store.due_cards(today, f.get("max_recall_per_day", 2))
 
     def unavailable(reason, note):
         cards = due()
         fallback = None
         if cards:
-            fallback = Daily10(digest.recall_only_msg(cards, note, notes), [], lambda: store.mark_cards_shown(cards, today))
+            fallback = Daily10(digest.recall_only_msg(cards, note, notes), [],
+                               lambda: store.mark_cards_shown(cards, today, intervals))
         return LessonUnavailable(reason, note, fallback)
 
     try:
-        name, entries = paths.load_path((paths_dir or PATHS_DIR) / f"{f['path']}.toml")
-        steps, flagged = paths.load_steps(get_json, store, name, entries)
+        name, entries = paths.load_path((paths_dir or PATHS_DIR) / f"{pid}.toml")
+        steps, flagged = paths.load_steps(get_json, store, pid, entries, persist=not dry_run)
     except (paths.PathError, openalex.OpenAlexError) as e:
         log.warning("reading path unavailable: %s", e)
         raise unavailable(type(e).__name__, f"Daily 10 lesson unavailable today ({type(e).__name__}); it will be tried again tomorrow")
     for e, reason in flagged:
         log.warning("path entry skipped: %s", reason)
-    done = store.done_steps(name)
+    done = store.done_steps(pid)
     todo = [s for s in steps if paths.entry_key(s.entry) not in done]
     if not todo:
-        cards = due()
-        if not cards:
+        if not due():
             return None
         raise unavailable("path complete", "You have finished this reading path. Only recall cards remain.")
     step = todo[0]
@@ -70,8 +74,8 @@ def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None
     key = paths.entry_key(step.entry)
 
     def commit():
-        store.mark_step_done(name, key, now)
-        store.add_cards(name, key, lesson["recall"], today)
-        store.mark_cards_shown(cards, today)
+        store.mark_step_done(pid, key, now)
+        store.add_cards(pid, key, lesson["recall"], today, intervals)
+        store.mark_cards_shown(cards, today, intervals)
 
     return Daily10(msg, [t["term"] for t in lesson["prereads"]], commit)

@@ -44,10 +44,14 @@ class Ask:
         return self.reply
 
 
-def prepare(tmp_path, ask, api=None, known=(), store=None, path=PATH):
+def prepare(tmp_path, ask, api=None, known=(), store=None, path=PATH, now=NOW, dry_run=False, cfg=CFG):
     (tmp_path / "p.toml").write_text(path)
-    return daily10.prepare(CFG, "profile", store or Store(":memory:"), ask, api or FakeOpenAlex(SHARPE, BS, HESTON),
-                           list(known), NOW, paths_dir=tmp_path)
+    return daily10.prepare(cfg, "profile", store or Store(":memory:"), ask, api or FakeOpenAlex(SHARPE, BS, HESTON),
+                           list(known), now, paths_dir=tmp_path, dry_run=dry_run)
+
+
+def day(n):
+    return NOW + timedelta(days=n)
 
 
 def test_the_first_day_is_the_first_step_with_facts_from_data_not_from_the_model(tmp_path):
@@ -65,21 +69,22 @@ def test_a_step_counts_as_done_only_when_the_message_is_committed_after_delivery
     again = prepare(tmp_path, ask, store=store)  # nothing was committed (e.g. the send failed)
     assert "Day 1 of 3" in again.message
     first.commit()
-    second = prepare(tmp_path, ask, store=store)
+    second = prepare(tmp_path, ask, store=store, now=day(1))
     assert "Day 2 of 3" in second.message and "The Pricing of Options" in second.message
     assert "Background knowledge" in second.message  # BS has no abstract in this fixture
     second.commit()
-    third = prepare(tmp_path, ask, store=store)
+    third = prepare(tmp_path, ask, store=store, now=day(2))
     assert "Day 3 of 3" in third.message
     third.commit()
-    assert prepare(tmp_path, ask, store=store) is None  # the path is complete
+    with pytest.raises(daily10.LessonUnavailable, match="path complete"):  # complete, but recall cards are still owed
+        prepare(tmp_path, ask, store=store, now=day(40))
 
 
 def test_later_days_make_no_outside_calls_once_the_path_is_cached(tmp_path):
     store, api, ask = Store(":memory:"), FakeOpenAlex(SHARPE, BS, HESTON), Ask(json.dumps(LESSON))
     prepare(tmp_path, ask, api, store=store).commit()
     calls = len(api.calls)
-    prepare(tmp_path, ask, api, store=store)
+    prepare(tmp_path, ask, api, store=store, now=day(1))
     assert len(api.calls) == calls
 
 
@@ -119,15 +124,16 @@ def test_a_recall_card_is_marked_shown_only_after_the_day_is_delivered(tmp_path)
     assert "Why hedge?" in first.message
     assert "Why hedge?" in day2().message  # the send failed, nothing committed: it is still due
     first.commit()
-    assert "Why hedge?" not in day2().message  # delivered: not repeated the same day
+    assert day2() is None  # delivered: nothing more the same day (neither a second lesson nor the card again)
 
 
 def test_recall_days_and_the_daily_cap_come_from_config(tmp_path):
-    store, ask = Store(":memory:"), Ask(json.dumps({**LESSON, "recall": [{"q": f"Q{i}", "a": "A"} for i in range(2)]}))
-    prepare(tmp_path, ask, store=store).commit()
+    ask = Ask(json.dumps({**LESSON, "recall": [{"q": f"Q{i}", "a": "A"} for i in range(2)]}))
     cfg = {**CFG, "foundations": {**CFG["foundations"], "recall_days": [2], "max_recall_per_day": 1}}
     (tmp_path / "p.toml").write_text(PATH)
     api = FakeOpenAlex(SHARPE, BS, HESTON)
+    store = Store(":memory:")
+    prepare(tmp_path, ask, store=store, cfg=cfg).commit()
 
     def day(n):
         return daily10.prepare(cfg, "profile", store, ask, api, [], NOW + timedelta(days=n), paths_dir=tmp_path)
@@ -167,7 +173,7 @@ def test_when_the_citation_service_is_down_the_day_still_delivers_the_recall_car
     assert "recall only" in fallback.message.lower() and "Why hedge?" in fallback.message
     assert "<tg-spoiler>To remove risk.</tg-spoiler>" in fallback.message
     fallback.commit()
-    assert store.done_steps("Finance: risk and pricing") == set()  # no step was consumed by the outage
+    assert store.done_steps("p") == set()  # no step was consumed by the outage
     again = _tomorrow(tmp_path, store, FakeOpenAlex(SHARPE, BS, HESTON), Ask(json.dumps(LESSON)), day2 + timedelta(days=1))
     assert "Day 1 of 3" in again.message  # the lesson that failed is simply still the next one: the place was not lost
     assert "Why hedge?" not in again.message  # and the card shown during the outage is not shown twice
@@ -229,3 +235,26 @@ def test_a_cached_path_survives_a_service_outage_untouched(tmp_path):
     down.fail = openalex.OpenAlexError("down")
     d = _tomorrow(tmp_path, store, down, ask, NOW + timedelta(days=1))
     assert "Day 2 of 3" in d.message and down.calls == []
+
+
+# ---- review fixes ----
+
+def test_a_second_run_the_same_day_gets_no_second_lesson_but_tomorrow_does(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    prepare(tmp_path, ask, store=store).commit()
+    assert prepare(tmp_path, ask, store=store, now=NOW + timedelta(hours=5)) is None
+    assert "Day 2 of 3" in prepare(tmp_path, ask, store=store, now=day(1)).message
+
+
+def test_renaming_the_path_in_the_file_does_not_reset_progress(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    prepare(tmp_path, ask, store=store).commit()
+    renamed = PATH.replace("Finance: risk and pricing", "Finance: a better name")
+    assert "Day 2 of 3" in prepare(tmp_path, ask, store=store, path=renamed, now=day(1)).message
+
+
+def test_a_dry_run_does_not_cache_the_path_but_does_not_break_later_real_runs(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    d = prepare(tmp_path, ask, store=store, dry_run=True)
+    assert "Day 1 of 3" in d.message and store.get_path_cache("p") == {}
+    assert "Day 1 of 3" in prepare(tmp_path, ask, store=store).message and store.get_path_cache("p") != {}

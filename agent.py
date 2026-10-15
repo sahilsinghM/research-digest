@@ -61,7 +61,7 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False, get_jso
     d10, stop, delivered = None, None, 0
     if foundations:
         try:
-            d10 = daily10.prepare(cfg, profile, store, ask, get_json, known, now, notes=notes)
+            d10 = daily10.prepare(cfg, profile, store, ask, get_json, known, now, notes=notes, dry_run=dry_run)
         except daily10.LessonUnavailable as e:
             log.warning("Daily 10 lesson unavailable: %s", e.reason)
             d10 = e.fallback  # a recall-only day, already carrying the reason
@@ -72,6 +72,9 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False, get_jso
             stop = "Claude usage limit reached"
         except (runner.RunnerError, analyst.CallCapExceeded) as e:
             log.warning("Daily 10 unavailable: %s", e)
+            notes.append(f"Daily 10 unavailable today ({type(e).__name__})")
+        except Exception as e:  # a surprise in one record must not take the whole day's digest down
+            log.exception("Daily 10 failed unexpectedly")
             notes.append(f"Daily 10 unavailable today ({type(e).__name__})")
     if d10:
         send(d10.message)

@@ -141,3 +141,22 @@ def test_a_new_entry_added_to_the_file_is_resolved_without_redoing_the_cached_on
     steps, _ = paths.load_steps(api, store, "P", ENTRIES[:3])
     assert [s.work.id for s in steps] == ["W5", "W8", "W1"]
     assert not any(c[1].get("search", "").lower().startswith("portfolio") for c in api.calls)
+
+
+def test_fixing_the_authors_of_a_wrongly_matched_entry_takes_effect_instead_of_being_ignored_forever():
+    wrong = W("W40", "A Generic Title", 1990, 900, authors=("Wendy Wrong",))
+    right = W("W41", "A Generic Title", 1990, 50, authors=("Rita Right",))
+    api, store = FakeOpenAlex(wrong, right), Store(":memory:")
+    loose = {"title": "A Generic Title", "authors": [], "year": 1990, "note": ""}
+    steps, _ = paths.load_steps(api, store, "P", [loose])
+    assert steps[0].work.id == "W40"          # no authors given: the most cited title match wins
+    fixed = {**loose, "authors": ["Right"]}
+    steps, _ = paths.load_steps(api, store, "P", [fixed])
+    assert steps[0].work.id == "W41"          # the owner's correction is honoured, not shadowed by the old cache
+    assert paths.entry_key(loose) == paths.entry_key(fixed)  # ...while the lesson's identity (done/not done) is unchanged
+
+
+def test_load_steps_can_skip_writing_the_cache():
+    store = Store(":memory:")
+    paths.load_steps(FakeOpenAlex(*ALL), store, "P", ENTRIES, persist=False)
+    assert store.get_path_cache("P") == {}

@@ -47,15 +47,21 @@ def tidy_title(t):
     return t.title() if letters and sum(c.isupper() for c in letters) / len(letters) > 0.8 else t
 
 
+def _str(v):
+    return v if isinstance(v, str) else ""
+
+
 def parse_work(w):
+    """Every field may be missing or null in the service's data: parse defensively."""
     oa = w.get("open_access") or {}
-    return Work(id=str(w.get("id", "")).rsplit("/", 1)[-1], title=tidy_title(w.get("display_name") or ""),
+    names = [_str(((a or {}).get("author") or {}).get("display_name")) for a in (w.get("authorships") or [])]
+    return Work(id=_str(w.get("id")).rsplit("/", 1)[-1], title=tidy_title(_str(w.get("display_name"))),
                 year=w.get("publication_year") or 0, cited_by=w.get("cited_by_count") or 0,
-                type=w.get("type") or "", abstract=reconstruct_abstract(w.get("abstract_inverted_index")),
-                oa_url=(oa.get("oa_url") or "") if oa.get("is_oa") else "", doi_url=w.get("doi") or "",
-                authors=[(a.get("author") or {}).get("display_name", "") for a in (w.get("authorships") or [])][:3],
-                references=[str(x).rsplit("/", 1)[-1] for x in (w.get("referenced_works") or [])],
-                topic=(((w.get("primary_topic") or {}).get("subfield")) or {}).get("display_name", ""))
+                type=_str(w.get("type")), abstract=reconstruct_abstract(w.get("abstract_inverted_index")),
+                oa_url=_str(oa.get("oa_url")) if oa.get("is_oa") else "", doi_url=_str(w.get("doi")),
+                authors=[n for n in names if n][:3],
+                references=[_str(x).rsplit("/", 1)[-1] for x in (w.get("referenced_works") or [])],
+                topic=_str((((w.get("primary_topic") or {}).get("subfield")) or {}).get("display_name")))
 
 
 def _norm(s):
