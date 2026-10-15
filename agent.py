@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import analyst
+import daily10
 import delivery
 import digest
+import openalex
 import runner
 import sources
 from rank import pick, prefilter
@@ -19,11 +21,17 @@ log = logging.getLogger("agent")
 HERE = Path(__file__).parent
 
 
-def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
-    """Fetch, score, read, format, send. Delivery state is written only when not a dry run, and
-    last-success only when the whole run finished (a usage-limit stop, a mid-run failure or a crash
-    leaves it behind so the next run picks the work up)."""
+def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False, get_json=None):
+    """Fetch, score, read, format, send. With the foundations track on, the Daily 10 leads the day and new papers are
+    an optional bonus above a high bar. Delivery state is written only when not a dry run, and last-success only
+    when the whole run finished (a usage-limit stop, a mid-run failure or a crash leaves it behind so the next run
+    picks the work up)."""
     r, m = cfg["run"], cfg["models"]
+    f = cfg.get("foundations") or {}
+    foundations = bool(get_json and f.get("enabled"))
+    bar = f.get("new_paper_min_score", 8) if foundations else r["min_score"]
+    cap = f.get("max_new_papers", 1) if foundations else r["max_papers"]
+
     since = store.since(r["lookback_days_first_run"], now)
     fetched, failed = fetch(cfg, since.date(), now.date())
     if failed and not fetched:  # total outage: advancing would lose that day's papers for good
@@ -50,40 +58,69 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
 
     ask = analyst.CallCap(ask_model, r["max_calls_per_run"])
     known = store.recent_concepts(200)  # terms already taught (newest first): never explain them again
-    done, stop = [], None
-    try:
-        scored = analyst.triage(ask, m["triage"], fresh, profile, r["triage_batch"])
-        if not dry_run:
-            store.record_scores([p for p in fresh if p.id in scored])
-        log.info("triage: %d papers scored, %d at or above the bar", len(papers),
-                 sum(p.score >= r["min_score"] for p in papers))
-        for p in pick(papers, cfg["quota"], r["max_papers"], r["min_score"]):
-            try:
-                a = analyst.deep_read(ask, m["analyse"], p, profile, known)
-            except (runner.RunnerError, analyst.CallCapExceeded) as e:
-                if isinstance(e, runner.UsageLimitReached):
-                    raise
-                stop = f"{type(e).__name__}"  # keep what was already read; the rest is retried next run
-                log.warning("deep read stopped: %s", e)
-                break
-            if a:
-                done.append((p, a))
-                known = [x["term"] for x in a["prereads"]] + known  # so the next paper does not repeat them
-            else:
-                log.warning("skipping %s: model reply was not valid JSON", p.id)
-    except runner.UsageLimitReached as e:
-        log.warning("usage limit: %s", e)  # keeps the real wording/exit behaviour for tightening the detection
-        stop = "Claude usage limit reached"
+    d10, stop, delivered = None, None, 0
+    if foundations:
+        try:
+            d10 = daily10.prepare(cfg, profile, store, ask, get_json, known, now, notes=notes, dry_run=dry_run)
+        except daily10.LessonUnavailable as e:
+            log.warning("Daily 10 lesson unavailable: %s", e.reason)
+            d10 = e.fallback  # a recall-only day, already carrying the reason
+            if d10 is None:
+                notes.append(e.note)  # nothing to recall: the reason rides in the header or quiet message
+        except runner.UsageLimitReached as e:
+            log.warning("usage limit: %s", e)
+            stop = "Claude usage limit reached"
+        except (runner.RunnerError, analyst.CallCapExceeded) as e:
+            log.warning("Daily 10 unavailable: %s", e)
+            notes.append(f"Daily 10 unavailable today ({type(e).__name__})")
+        except Exception as e:  # a surprise in one record must not take the whole day's digest down
+            log.exception("Daily 10 failed unexpectedly")
+            notes.append(f"Daily 10 unavailable today ({type(e).__name__})")
+    if d10:
+        send(d10.message)
+        delivered += 1
+        known = d10.terms + known
+        if not dry_run:  # only after delivery: the step counts as done and its terms as taught
+            d10.commit()
+            for term in d10.terms:
+                store.record_concept(term, now)
+
+    done = []
+    if not stop:
+        try:
+            scored = analyst.triage(ask, m["triage"], fresh, profile, r["triage_batch"])
+            if not dry_run:
+                store.record_scores([p for p in fresh if p.id in scored])
+            log.info("triage: %d papers scored, %d at or above the bar", len(papers), sum(p.score >= bar for p in papers))
+            for p in pick(papers, cfg["quota"], cap, bar):
+                try:
+                    a = analyst.deep_read(ask, m["analyse"], p, profile, known)
+                except (runner.RunnerError, analyst.CallCapExceeded) as e:
+                    if isinstance(e, runner.UsageLimitReached):
+                        raise
+                    stop = f"{type(e).__name__}"  # keep what was already read; the rest is retried next run
+                    log.warning("deep read stopped: %s", e)
+                    break
+                if a:
+                    done.append((p, a))
+                    known = [x["term"] for x in a["prereads"]] + known  # so the next paper does not repeat them
+                else:
+                    log.warning("skipping %s: model reply was not valid JSON", p.id)
+        except runner.UsageLimitReached as e:
+            log.warning("usage limit: %s", e)  # keeps the real wording/exit behaviour for tightening the detection
+            stop = "Claude usage limit reached"
 
     if done:
-        send(digest.header_msg(done, len(papers), now.date().isoformat(), notes))
+        if not d10:
+            send(digest.header_msg(done, len(papers), now.date().isoformat(), notes))
         for p, a in done:
-            send(digest.paper_msg(p, a))
+            send(digest.paper_msg(p, a, bonus=bool(d10)))
+            delivered += 1
             if not dry_run:
                 store.mark_sent(p)  # only after the message went out: a retry resends nothing already delivered
                 for x in a["prereads"]:
                     store.record_concept(x["term"], now)
-        if not stop:
+        if not stop and not foundations:
             try:
                 concept = analyst.teach(ask, m["analyse"], done, profile, known[:100])
             except runner.UsageLimitReached as e:
@@ -96,11 +133,12 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
                 send(digest.teach_msg(concept))
                 if not dry_run:
                     store.record_concept(str(concept["name"]), now)  # only after it was really sent
-    elif not stop:
+    elif not stop and not d10:
         send("\n".join([f"Nothing worth your time today ({len(papers)} new papers scanned)."] + notes))
 
     if stop:
-        send(f"⚠ Run cut short ({stop}): {len(done)} papers delivered. The rest will be retried on the next run.")
+        send(f"⚠ Run cut short ({stop}): {delivered} item{'s' if delivered != 1 else ''} delivered. "
+             "The rest will be retried on the next run.")
         return
     if not dry_run:
         store.record_success(now)
@@ -161,7 +199,7 @@ def main(argv=None):
         db = HERE / "state.db"
         store = Store(db if db.exists() or not args.dry_run else ":memory:")
         run(cfg, profile, store, runner.claude, sources.fetch_all, send, datetime.now(timezone.utc),
-            dry_run=args.dry_run)
+            dry_run=args.dry_run, get_json=openalex.http_get_json)
 
     return guarded(job, send)
 

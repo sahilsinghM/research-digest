@@ -1,0 +1,94 @@
+name = "Finance: risk, pricing and behaviour"
+
+# Ordered by what you need to understand first, not by date. Each entry is checked against the citation data;
+# anything that cannot be matched confidently is skipped (with a note) until you fix it. Edit freely.
+
+[[step]]
+title = "Portfolio Selection"
+authors = ["Markowitz"]
+year = 1952
+note = "Risk is not just how much you could lose: it is how returns move together. The start of modern finance."
+
+[[step]]
+title = "Capital Asset Prices: A Theory of Market Equilibrium under Conditions of Risk"
+authors = ["Sharpe"]
+year = 1964
+note = "If everyone holds good portfolios, what is the reward for taking risk? Introduces CAPM."
+
+[[step]]
+title = "Efficient Capital Markets: A Review of Theory and Empirical Work"
+authors = ["Fama"]
+year = 1970
+note = "Prices already reflect what is known, so beating the market is hard. The idea behind most 'you cannot win' arguments."
+
+[[step]]
+title = "The Pricing of Options and Corporate Liabilities"
+authors = ["Black", "Scholes"]
+year = 1973
+note = "A fair price for an option from first principles: hedge away the risk and no free lunch remains."
+
+[[step]]
+title = "Theory of Rational Option Pricing"
+authors = ["Merton"]
+year = 1973
+note = "The same idea made general and rigorous; what rational option prices must obey."
+
+[[step]]
+title = "Option pricing: A simplified approach"
+authors = ["Cox", "Ross", "Rubinstein"]
+year = 1979
+note = "The binomial tree: the idea of option pricing you can compute by hand."
+
+[[step]]
+title = "Option pricing when underlying stock returns are discontinuous"
+authors = ["Merton"]
+year = 1976
+note = "Prices jump. Why the smooth model fails on bad days."
+
+[[step]]
+title = "Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation"
+authors = ["Engle"]
+year = 1982
+note = "Volatility clusters: calm follows calm, storms follow storms."
+
+[[step]]
+title = "Generalized autoregressive conditional heteroskedasticity"
+authors = ["Bollerslev"]
+year = 1986
+note = "The workhorse model of changing volatility."
+
+[[step]]
+title = "A Closed-Form Solution for Options with Stochastic Volatility with Applications to Bond and Currency Options"
+authors = ["Heston"]
+year = 1993
+note = "Volatility itself moves randomly; the model that explains the volatility smile."
+
+[[step]]
+title = "Prospect Theory: An Analysis of Decision under Risk"
+authors = ["Kahneman", "Tversky"]
+year = 1979
+note = "How people really feel about gains and losses, and why that wrecks trading discipline."
+
+[[step]]
+title = "Trading Is Hazardous to Your Wealth: The Common Stock Investment Performance of Individual Investors"
+authors = ["Barber", "Odean"]
+year = 2000
+note = "The evidence: the more individual investors trade, the worse they do."
+
+[[step]]
+title = "Expected Option Returns"
+authors = ["Coval", "Shumway"]
+year = 2001
+note = "What options really earn on average, and what that says about who gets paid for taking which risk."
+
+[[step]]
+title = "Delta-Hedged Gains and the Negative Market Volatility Risk Premium"
+authors = ["Bakshi", "Kapadia"]
+year = 2003
+note = "Why selling options earns a premium, and the catch that comes with it."
+
+[[step]]
+title = "A New Interpretation of Information Rate"
+authors = ["Kelly"]
+year = 1956
+note = "How much to bet so you grow without ruin. The maths of sizing."

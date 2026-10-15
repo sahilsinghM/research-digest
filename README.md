@@ -42,6 +42,14 @@ Needs Claude Code installed and logged in with a subscription (`claude auth stat
 - Fallback: the old root copy in `/root/research-digest` is no longer scheduled. Delete it once the new setup has
   run well for a few days (it still holds a copy of the Telegram token and profile).
 
+## The reading path
+
+The Daily 10 follows `paths/finance-risk-pricing.toml`: an ordered list of landmark papers (title, author surnames,
+year, a one-line reason). Edit it freely (add, remove, reorder). Each entry is checked against OpenAlex; one that
+cannot be matched is skipped and mentioned in the message. Preview without sending or saving anything with
+`python agent.py --dry-run`. Config: `[foundations]` (`enabled`, `path`, `recall_days`, `max_recall_per_day`,
+`new_paper_min_score`, `max_new_papers`).
+
 ## Tuning (`config.toml`)
 
 `quota` (papers per area), `max_papers`, `min_score` (the bar, 0-10), `min_abstract_chars`, `triage_batch`,

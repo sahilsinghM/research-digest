@@ -2,7 +2,7 @@
 title: Daily 10 first; new papers only when excellent
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Daily 10 first; new papers only when excellent
@@ -17,12 +17,12 @@ Make the Daily 10 the first and main item of each day. New papers are triaged as
 
 ## Acceptance criteria
 
-- [ ] The Daily 10 is always the first message when the path has a next step
-- [ ] A new paper below the new bar is never sent; at most one above it is sent as a bonus
-- [ ] With no new paper and no path step left, the quiet-day message still appears
-- [ ] The idea-of-the-day step no longer runs
-- [ ] Usage-limit and failure notices still work and still do not advance unsent items
-- [ ] Full test suite passes
+- [x] The Daily 10 is always the first message when the path has a next step
+- [x] A new paper below the new bar is never sent; at most one above it is sent as a bonus
+- [x] With no new paper and no path step left, the quiet-day message still appears
+- [x] The idea-of-the-day step no longer runs
+- [x] Usage-limit and failure notices still work and still do not advance unsent items
+- [x] Full test suite passes
 
 ## Blocked by
 

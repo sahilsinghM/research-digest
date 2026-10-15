@@ -18,7 +18,8 @@ CONCEPT = json.dumps({"name": "Drawdown", "explain": "how far a portfolio falls"
 class FakeRun:
     """Answers triage calls from `scores` (default 9) and deep-read calls with ANALYSIS (or queued replies)."""
 
-    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None, error_on_call=None):
+    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None, error_on_call=None, lesson=None):
+        self.lesson = lesson
         self.replies, self.scores, self.concept, self.calls = list(replies), scores or {}, concept, []
         self.limit_on_call = limit_on_call  # 1-based index of the call that hits the usage limit
         self.error_on_call = error_on_call  # 1-based index of a call that fails some other way
@@ -31,6 +32,8 @@ class FakeRun:
             raise RunnerError("claude timed out after 300s")
         if "triage" in system.lower():
             return json.dumps([{"id": r["id"], "score": self.scores.get(r["id"], 9)} for r in json.loads(user)])
+        if "study session" in system.lower():
+            return self.lesson
         if "one concept" in system.lower():
             if isinstance(self.concept, Exception):
                 raise self.concept
@@ -38,7 +41,8 @@ class FakeRun:
         return self.replies.pop(0) if self.replies else ANALYSIS
 
     def deep_calls(self):
-        return [c for c in self.calls if "triage" not in c[1].lower() and "one concept" not in c[1].lower()]
+        return [c for c in self.calls if "triage" not in c[1].lower() and "one concept" not in c[1].lower()
+                and "study session" not in c[1].lower()]
 
 
 LONG = "The authors study the question with a stated design and report their main findings in detail. " * 2
@@ -437,3 +441,198 @@ def test_dry_run_records_no_terms():
     store = Store(":memory:")
     go([P("a")], store=store, dry_run=True, fake=FakeRun(_with_prereads("Spread")))
     assert store.recent_concepts() == []
+
+
+# ---- Daily 10 wiring (issue 12) ----
+
+from oa_fixtures import FakeOpenAlex, W  # noqa: E402
+
+_BS = W("W1", "The Pricing of Options and Corporate Liabilities", 1973, 28883, authors=("Fischer Black", "Myron Scholes"))
+_LESSON = json.dumps({"headline": "A fair price for an option", "idea": ["One.", "Two."], "look_for": "the hedge",
+                      "your_sentence": "Price depends on ___.", "prereads": [], "recall": [{"q": "Q?", "a": "A."}]})
+F_CFG = dict(CFG, foundations={"enabled": True, "path": "p"})
+
+
+def test_the_daily10_is_the_first_message_and_uses_the_real_data_shape(tmp_path, monkeypatch):
+    import daily10
+    (tmp_path / "p.toml").write_text('name = "Finance"\n[[step]]\ntitle = "The Pricing of Options and Corporate Liabilities"\n'
+                                     'authors = ["Black"]\nyear = 1973\n')
+    monkeypatch.setattr(daily10, "PATHS_DIR", tmp_path)
+    sent, fake = [], FakeRun(lesson=_LESSON)
+    run(F_CFG, "profile", Store(":memory:"), fake, fetch_of(P("a")), sent.append, NOW, get_json=FakeOpenAlex(_BS))
+    assert "Daily 10" in sent[0] and "A fair price for an option" in sent[0] and "28,883" in sent[0]
+    assert any("Title a" in m for m in sent[1:])
+
+
+def test_without_a_citation_client_the_daily10_is_simply_off():
+    sent, _, _ = go([P("a")])
+    assert not any("Daily 10" in m for m in sent)
+
+
+def _path_dir(tmp_path, monkeypatch, steps=2):
+    import daily10
+    body = 'name = "Finance"\n' + "".join(
+        f'[[step]]\ntitle = "Paper {i}"\nauthors = ["Auth"]\nyear = {1960 + i}\n' for i in range(steps))
+    (tmp_path / "p.toml").write_text(body)
+    monkeypatch.setattr(daily10, "PATHS_DIR", tmp_path)
+    return FakeOpenAlex(*[W(f"W{i}", f"Paper {i}", 1960 + i, 100 + i, authors=("Ann Auth",), abstract="x" * 80)
+                          for i in range(steps)])
+
+
+_LESSON_T = json.dumps({"headline": "Idea", "idea": ["One."], "look_for": "x", "your_sentence": "S ___.",
+                        "prereads": [{"term": "Hedge", "plain": "cut risk"}], "recall": [{"q": "Q?", "a": "A."}]})
+
+
+def test_a_delivered_daily10_advances_the_path_and_remembers_its_terms(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, get_json=api)
+    assert store.done_steps("p") == {"Paper 0|1960"} and "Hedge" in store.recent_concepts()
+
+
+def test_a_failed_send_leaves_the_step_and_terms_untouched(tmp_path, monkeypatch):
+    import pytest
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+
+    def boom(text):
+        raise RuntimeError("telegram down")
+
+    with pytest.raises(RuntimeError):
+        run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), boom, NOW, get_json=api)
+    assert store.done_steps("p") == set() and "Hedge" not in store.recent_concepts()
+
+
+def test_a_dry_run_never_advances_the_path(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, dry_run=True, get_json=api)
+    assert store.done_steps("p") == set() and store.recent_concepts() == []
+
+
+def test_a_dry_run_creates_no_recall_cards(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, dry_run=True, get_json=api)
+    assert store.due_cards(NOW.date() + timedelta(days=30), 5) == []
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, get_json=api)
+    assert len(store.due_cards(NOW.date() + timedelta(days=1), 5)) == 1
+
+
+# ---- issue 15: the Daily 10 leads; new papers are an optional bonus above a high bar ----
+
+F2 = dict(CFG, foundations={"enabled": True, "path": "p", "new_paper_min_score": 8, "max_new_papers": 1})
+
+
+def go2(tmp_path, monkeypatch, papers=(), fake=None, store=None, steps=2, failed=(), dry_run=False):
+    api = _path_dir(tmp_path, monkeypatch, steps)
+    sent, fake, store = [], fake or FakeRun(lesson=_LESSON_T), store or Store(":memory:")
+    run(F2, "profile", store, fake, fetch_of(*papers, failed=failed), sent.append, NOW, dry_run=dry_run, get_json=api)
+    return sent, fake, store
+
+
+def test_the_daily10_leads_and_replaces_the_header_and_the_idea_of_the_day(tmp_path, monkeypatch):
+    sent, fake, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 9}))
+    assert "Daily 10" in sent[0] and len(sent) == 2
+    assert "Bonus" in sent[1] and "Title a" in sent[1]
+    assert not any("Digest ·" in m or "Idea of the day" in m for m in sent)
+    assert all("one concept" not in c[1].lower() for c in fake.calls)
+
+
+def test_a_new_paper_below_the_new_bar_is_never_sent(tmp_path, monkeypatch):
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 7}))
+    assert len(sent) == 1 and "Daily 10" in sent[0] and "Nothing worth" not in sent[0]
+
+
+def test_at_most_one_bonus_paper_and_it_is_the_best_one(tmp_path, monkeypatch):
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a"), P("b", "science")], FakeRun(lesson=_LESSON_T, scores={"a": 8.5, "b": 9.5}))
+    assert len(sent) == 2 and "Title b" in sent[1]
+
+
+def test_sources_that_failed_are_reported_inside_the_daily10(tmp_path, monkeypatch):
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 2}), failed=["nber"])
+    assert "sources failed: nber" in sent[0] and "Daily 10" in sent[0] and len(sent) == 1
+
+
+def test_when_the_path_is_complete_and_nothing_is_excellent_the_quiet_message_still_appears(tmp_path, monkeypatch):
+    store = Store(":memory:")
+    for i in range(2):
+        store.mark_step_done("p", f"Paper {i}|{1960 + i}", NOW - timedelta(days=5))
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 3}), store=store)
+    assert len(sent) == 1 and "Nothing worth" in sent[0]
+
+
+def test_a_usage_limit_hit_while_writing_the_lesson_sends_only_the_notice_and_changes_nothing(tmp_path, monkeypatch):
+    sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, limit_on_call=1))
+    assert len(sent) == 1 and "usage limit" in sent[0].lower()
+    assert store.done_steps("p") == set() and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_another_failure_while_writing_the_lesson_skips_the_daily10_with_a_note_and_the_rest_carries_on(tmp_path, monkeypatch):
+    sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 9}, error_on_call=1))
+    assert "Daily 10 unavailable today (RunnerError)" in sent[0] and "Title a" in sent[1] if len(sent) > 1 else True
+    assert store.done_steps("p") == set()          # the step is retried tomorrow
+    assert store.since(2, NOW) == NOW                    # the rest of the run completed
+
+
+def test_a_limit_hit_after_the_daily10_was_delivered_keeps_the_step_but_not_last_success(tmp_path, monkeypatch):
+    sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, limit_on_call=2))  # 1 lesson, 2 triage
+    assert "Daily 10" in sent[0] and "usage limit" in sent[-1].lower() and "1 item delivered" in sent[-1]
+    assert store.done_steps("p") == {"Paper 0|1960"} and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+# ---- issue 16 in the pipeline ----
+
+import openalex  # noqa: E402
+
+
+def test_a_citation_service_outage_with_cards_due_sends_recall_only_and_reports_the_failure(tmp_path, monkeypatch):
+    _path_dir(tmp_path, monkeypatch)
+    store = Store(":memory:")  # a card from an earlier day; the path is not cached yet
+    store.add_cards("Finance", "Paper 0|1960", [{"q": "Q?", "a": "A."}], NOW.date())
+    down = FakeOpenAlex()
+    down.fail = openalex.OpenAlexError("OpenAlex unavailable")
+    sent = []
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(P("a")), sent.append, NOW + timedelta(days=1), get_json=down)
+    assert "recall only" in sent[0].lower() and "Q?" in sent[0] and "OpenAlexError" in sent[0]
+    assert store.done_steps("p") == set()                       # nothing advanced
+    assert store.since(2, NOW) == NOW + timedelta(days=1)             # the rest of the run completed
+
+
+def test_a_citation_service_outage_with_nothing_to_recall_is_reported_in_the_quiet_message(tmp_path, monkeypatch):
+    _path_dir(tmp_path, monkeypatch)
+    down = FakeOpenAlex()
+    down.fail = openalex.OpenAlexError("OpenAlex unavailable")
+    sent = []
+    run(F2, "profile", Store(":memory:"), FakeRun(lesson=_LESSON_T, scores={"a": 2}), fetch_of(P("a")), sent.append, NOW, get_json=down)
+    assert len(sent) == 1 and "Nothing worth" in sent[0] and "Daily 10 lesson unavailable" in sent[0] and "OpenAlexError" in sent[0]
+
+
+# ---- review fixes: same-day guard, dry-run persistence, one bad record cannot take the day down ----
+
+def test_a_second_run_the_same_day_does_not_deliver_a_second_lesson(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch, steps=3), Store(":memory:")
+    first, second = [], []
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), first.append, NOW, get_json=api)
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), second.append, NOW + timedelta(hours=4), get_json=api)
+    assert "Day 1 of 3" in first[0]
+    assert not any("Daily 10" in m for m in second) and store.done_steps("p") == {"Paper 0|1960"}
+    third = []
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), third.append, NOW + timedelta(days=1), get_json=api)
+    assert "Day 2 of 3" in third[0]
+
+
+def test_a_dry_run_does_not_even_cache_the_path(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, dry_run=True, get_json=api)
+    assert store.get_path_cache("p") == {}
+
+
+def test_an_unexpected_error_in_the_daily10_cannot_take_the_whole_day_down(tmp_path, monkeypatch):
+    import daily10
+    _path_dir(tmp_path, monkeypatch)
+
+    def boom(*a, **k):
+        raise ValueError("a surprise in one OpenAlex record")
+
+    monkeypatch.setattr(daily10, "prepare", boom)
+    sent, store = [], Store(":memory:")
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T, scores={"a": 9}), fetch_of(P("a")), sent.append, NOW, get_json=FakeOpenAlex())
+    assert "Daily 10 unavailable today (ValueError)" in sent[0] and any("Title a" in m for m in sent)
+    assert store.since(2, NOW) == NOW

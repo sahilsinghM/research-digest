@@ -34,3 +34,8 @@ def test_abstract_poor_journals_are_recovered_through_pubmed():
     groups = load()["pubmed_extra"]
     science = [g for g in groups if g["area"] == "science"]
     assert science and {"Nature", "Cell"} <= set(science[0]["journals"])
+
+
+def test_new_papers_must_clear_a_high_bar_and_are_limited_when_the_daily10_is_on():
+    f = load()["foundations"]
+    assert f["new_paper_min_score"] >= 7 and 0 <= f["max_new_papers"] <= 2 and f["enabled"] is True

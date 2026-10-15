@@ -2,7 +2,7 @@
 title: Citation service failures and honest labelling
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Citation service failures and honest labelling
@@ -17,12 +17,12 @@ Make a bad day harmless and make the card honest. If the citation service is dow
 
 ## Acceptance criteria
 
-- [ ] Citation service down: recall cards and a note are delivered, the step is retried the next day
-- [ ] Rate-limit or timeout responses are retried with backoff and then reported, never crashing the run
-- [ ] Citation numbers in the message come only from data even if the model's reply includes its own
-- [ ] Background-knowledge labelling appears whenever the abstract is missing
-- [ ] The failure appears in the digest header like other source failures
-- [ ] Full test suite passes
+- [x] Citation service down: recall cards and a note are delivered, the step is retried the next day
+- [x] Rate-limit or timeout responses are retried with backoff and then reported, never crashing the run
+- [x] Citation numbers in the message come only from data even if the model's reply includes its own
+- [x] Background-knowledge labelling appears whenever the abstract is missing
+- [x] The failure appears in the digest header like other source failures
+- [x] Full test suite passes
 
 ## Blocked by
 

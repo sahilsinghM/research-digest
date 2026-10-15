@@ -2,7 +2,7 @@
 title: Daily 10 tracer: one real step end to end
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Daily 10 tracer: one real step end to end
@@ -17,13 +17,16 @@ Prove the whole path once with a single hard-coded landmark (the 1973 option-pri
 
 ## Acceptance criteria
 
-- [ ] `agent.py --dry-run` prints a Daily 10 message for the one hard-coded landmark using the real citation service and the real model
-- [ ] Years, citation count and built-on/led-to titles in the message come only from the citation data (a test fails if the model's text is used for them)
-- [ ] A missing abstract makes the card say the explanation is background knowledge, not from the paper's text
-- [ ] The message is escaped, uses a spoiler for the hidden answer, stays under the Telegram size limit, and never cuts inside a tag
-- [ ] Tests use recorded fixture shapes from the 2026-10-15 spike and a fake model; nothing automated calls the internet
-- [ ] Full test suite passes
+- [x] `agent.py --dry-run` prints a Daily 10 message for the one hard-coded landmark using the real citation service and the real model
+- [x] Years, citation count and built-on/led-to titles in the message come only from the citation data (a test fails if the model's text is used for them)
+- [x] A missing abstract makes the card say the explanation is background knowledge, not from the paper's text
+- [x] The message is escaped, uses a spoiler for the hidden answer, stays under the Telegram size limit, and never cuts inside a tag
+- [x] Tests use recorded fixture shapes from the 2026-10-15 spike and a fake model; nothing automated calls the internet
+- [x] Full test suite passes
 
 ## Blocked by
 
 None - can start immediately
+
+## Result
+Live check (2026-10-15): real OpenAlex + real model produced a ~2,000-character Daily 10 for Black-Scholes; citation count 28,883 came from data. Known flaws handed to issue 13: a 2005 reprint listed under 'built on', an off-topic paper under 'led to', ALL-CAPS titles.

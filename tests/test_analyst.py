@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from analyst import CallCap, CallCapExceeded, deep_read, parse_json, teach, triage
+from analyst import CallCap, CallCapExceeded, deep_read, lesson, parse_json, teach, triage
 from sources import Paper
 
 
@@ -244,3 +244,69 @@ def test_prompt_asks_for_plain_words_short_fields_and_assumes_a_beginner():
     deep_read(run, "m", P(), "p")
     system = run.calls[0][1].lower()
     assert "beginner" in system and "plain" in system and "at most 3" in system and "already_known_terms" in system
+
+
+# ---- the Daily 10 lesson ----
+
+from oa_fixtures import W, make_step  # noqa: E402
+
+_BS = W("W1", "The Pricing of Options and Corporate Liabilities", 1973, 28883, abstract="Options priced correctly.",
+        authors=("Fischer Black", "Myron Scholes"))
+_RAW_LESSON = {"headline": "A fair price for an option", "idea": ["a", "b", "c", "d", "e", "f"], "look_for": "the hedge",
+               "your_sentence": "Price depends on ___ because ___.",
+               "prereads": [{"term": "Option", "plain": "a right to buy"}, {"term": "Hedge", "plain": "cut risk"},
+                            {"term": "Third", "plain": "dropped"}],
+               "recall": [{"q": "Q1", "a": "A1"}, {"q": "Q2", "a": "A2"}, {"q": "Q3", "a": "A3"}, {"q": "", "a": "x"}],
+               "year": 1999, "cited_by_count": 1, "extra": "ignored"}
+
+
+def _step(abstract="Options priced correctly."):
+    return make_step(W("W1", _BS["display_name"], 1973, 28883, abstract=abstract, authors=("Fischer Black",)),
+                     built_on=[W("W8", "Capital Asset Prices", 1964, 19365)], led_to=[W("W21", "Heston", 1993, 8762)])
+
+
+def test_lesson_is_bounded_and_keeps_only_known_fields():
+    out = lesson(FakeRun(json.dumps(_RAW_LESSON)), "m", _step(), "profile", [])
+    assert len(out["idea"]) == 5 and len(out["prereads"]) == 2 and len(out["recall"]) == 2
+    assert set(out) == {"headline", "prereads", "idea", "look_for", "your_sentence", "recall"}
+    assert out["recall"][0] == {"q": "Q1", "a": "A1"}
+
+
+def test_lesson_sends_the_step_as_one_json_data_object_with_facts_from_data():
+    run = FakeRun(json.dumps(_RAW_LESSON))
+    lesson(run, "m", _step(), "I AM THE PROFILE", ["Spread"])
+    _, system, user = run.calls[0]
+    data = json.loads(user)
+    assert data["year"] == 1973 and data["cited_by"] == 28883 and data["abstract"] == "Options priced correctly."
+    assert data["already_known_terms"] == ["Spread"] and "I AM THE PROFILE" in system
+    assert [x["title"] for x in data["built_on"]] == ["Capital Asset Prices"] and data["led_to"][0]["year"] == 1993
+    assert data["why_here"] == ""
+    assert "study session" in system.lower() and "beginner" in system.lower()
+    assert "never state citation counts" in system.lower()
+
+
+def test_lesson_says_when_there_is_no_abstract_and_drops_known_terms():
+    run = FakeRun(json.dumps(_RAW_LESSON))
+    out = lesson(run, "m", _step(abstract=""), "p", ["option"])
+    assert json.loads(run.calls[0][2])["abstract"] == "(none available)"
+    assert [x["term"] for x in out["prereads"]] == ["Hedge", "Third"]
+
+
+def test_lesson_is_none_when_unusable():
+    assert lesson(FakeRun("junk", "junk"), "m", _step(), "p", []) is None
+    assert lesson(FakeRun(json.dumps({"headline": "", "idea": []})), "m", _step(), "p", []) is None
+    assert lesson(FakeRun("[1]"), "m", _step(), "p", []) is None
+
+
+def test_lines_where_the_model_makes_its_own_citation_claims_are_dropped():
+    raw = dict(_RAW_LESSON, headline="Cited 90,000 times: a fair price",
+               idea=["Keep this line.", "It has 12,000 citations in finance.", "Cited over 5000 times by others.", "Also keep this."],
+               look_for="Look at the hedge.", your_sentence="Price depends on ___.")
+    out = lesson(FakeRun(json.dumps(raw)), "m", _step(), "p", [])
+    assert out["idea"] == ["Keep this line.", "Also keep this."] and out["headline"] == ""
+    assert out["look_for"] == "Look at the hedge."
+
+
+def test_a_lesson_whose_only_content_made_citation_claims_is_unusable():
+    raw = {"headline": "Cited 5 times", "idea": ["Cited 9,000 times."], "recall": []}
+    assert lesson(FakeRun(json.dumps(raw)), "m", _step(), "p", []) is None

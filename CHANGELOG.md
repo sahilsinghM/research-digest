@@ -5,6 +5,29 @@ Format follows Keep a Changelog. Dates are when the work landed.
 ## [Unreleased]
 
 ### Added
+- **Daily 10**: a ten-minute foundations track that leads each day. One step of a curated reading path (first path:
+  15 landmark papers on risk, option pricing, volatility, behaviour and the evidence on retail traders, ordered by
+  what a beginner must understand first, in `paths/finance-risk-pricing.toml`): a spaced-recall question, the idea in
+  plain words with a 2-term pre-read, what it was built on and what it led to, an optional peek at the source, and a
+  sentence for the reader to write.
+- OpenAlex citation client: landmark papers are verified against citation data (confident match only; reprints and
+  chapter copies lose to the original), links come from the data and the path itself, and results are cached so later
+  days need no outside calls.
+- Spaced recall cards, scheduled from when each card was actually shown (1, 3, 7, 21 days), at most two a day.
+- New papers are now an optional bonus: at most one a day, only above a high score (`new_paper_min_score`).
+- Fallbacks: citation service down or lesson not written gives a recall-only day plus a note; the step is retried.
+
+### Changed
+- The header and "idea of the day" are replaced by the Daily 10 when the track is on.
+- One lesson a day: a rerun the same day never delivers a second one. Progress is keyed by the path file name, so
+  renaming the path inside the file does not reset it. A dry run reads but never writes the path cache.
+
+### Fixed
+- Resolver: sorting the title search by citations pushed real matches out of the page; relevance order is used.
+- Null fields in OpenAlex records no longer crash a run, and an unexpected error in the Daily 10 degrades to a note
+  instead of taking down the day's digest.
+
+### Added
 - Public repository at https://github.com/sahilsinghM/research-digest (`master`).
 
 ### Changed
