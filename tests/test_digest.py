@@ -189,3 +189,9 @@ def test_daily10_stays_whole_and_under_the_limit_with_huge_hostile_fields():
     for tag in ("b", "i", "tg-spoiler"):
         assert m.count(f"<{tag}>") == m.count(f"</{tag}>")
     assert not re.search(r"&(?!amp;|lt;|gt;|quot;|#)", m)
+
+
+def test_a_bonus_card_is_labelled_as_optional():
+    m = paper_msg(P(), A, bonus=True)
+    assert m.startswith("🆕") and "Bonus" in m.split("\n")[0] and "📈" in m.split("\n")[0]
+    assert "Bonus" not in paper_msg(P(), A)

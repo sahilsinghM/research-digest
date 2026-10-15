@@ -31,14 +31,14 @@ def _kind(p):
     return "Preprint" if p.kind == "preprint" else "Peer-reviewed"
 
 
-def paper_msg(p, a):
+def paper_msg(p, a, bonus=False):
     """One card: where it is from and how far to trust it, the headline, a pre-read of the ideas needed first,
     the takeaway and what it means for the reader, with the heavy detail folded away."""
     light, label = TRUST_LIGHT.get(str(a.get("trust") or "").lower(), TRUST_LIGHT["moderate"])
     pre = [x for x in (a.get("prereads") or []) if isinstance(x, dict) and x.get("term")][:3]
 
     def build(k):
-        lines = [f"{AREA_EMOJI.get(p.area, '📄')} <b>{esc(p.area.upper())}</b> · {esc(clip(p.journal, 60 * k))}"
+        lines = [f"{'🆕 <b>Bonus</b> · ' if bonus else ''}{AREA_EMOJI.get(p.area, '📄')} <b>{esc(p.area.upper())}</b> · {esc(clip(p.journal, 60 * k))}"
                  f" · {_kind(p)} · {light} {label}",
                  f"<b>{esc(clip(a.get('headline') or p.title, 160 * k))}</b>", ""]
         if pre:

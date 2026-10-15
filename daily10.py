@@ -19,7 +19,7 @@ class Daily10:
     commit: Callable  # call after the message was really delivered: marks the step done
 
 
-def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None):
+def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None, notes=()):
     f = cfg.get("foundations") or {}
     if not f.get("enabled"):
         return None
@@ -35,7 +35,7 @@ def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None
     lesson = analyst.lesson(ask, cfg["models"]["analyse"], step, profile, known_terms)
     if lesson is None:
         return None
-    notes = [f"Skipped, could not verify: {e['title']}" for e, _ in flagged]
+    notes = list(notes) + [f"Skipped, could not verify: {e['title']}" for e, _ in flagged]
     today = now.date()
     cards = store.due_cards(today, f.get("recall_days", [1, 3, 7, 21]), f.get("max_recall_per_day", 2))
     msg = digest.daily10_msg(step, lesson, cards, len(steps) - len(todo) + 1, len(steps), name, notes)

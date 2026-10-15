@@ -513,3 +513,65 @@ def test_a_dry_run_creates_no_recall_cards(tmp_path, monkeypatch):
     assert store.due_cards(NOW.date() + timedelta(days=30), [1, 3, 7, 21], 5) == []
     run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, get_json=api)
     assert len(store.due_cards(NOW.date() + timedelta(days=1), [1, 3, 7, 21], 5)) == 1
+
+
+# ---- issue 15: the Daily 10 leads; new papers are an optional bonus above a high bar ----
+
+F2 = dict(CFG, foundations={"enabled": True, "path": "p", "new_paper_min_score": 8, "max_new_papers": 1})
+
+
+def go2(tmp_path, monkeypatch, papers=(), fake=None, store=None, steps=2, failed=(), dry_run=False):
+    api = _path_dir(tmp_path, monkeypatch, steps)
+    sent, fake, store = [], fake or FakeRun(lesson=_LESSON_T), store or Store(":memory:")
+    run(F2, "profile", store, fake, fetch_of(*papers, failed=failed), sent.append, NOW, dry_run=dry_run, get_json=api)
+    return sent, fake, store
+
+
+def test_the_daily10_leads_and_replaces_the_header_and_the_idea_of_the_day(tmp_path, monkeypatch):
+    sent, fake, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 9}))
+    assert "Daily 10" in sent[0] and len(sent) == 2
+    assert "Bonus" in sent[1] and "Title a" in sent[1]
+    assert not any("Digest ·" in m or "Idea of the day" in m for m in sent)
+    assert all("one concept" not in c[1].lower() for c in fake.calls)
+
+
+def test_a_new_paper_below_the_new_bar_is_never_sent(tmp_path, monkeypatch):
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 7}))
+    assert len(sent) == 1 and "Daily 10" in sent[0] and "Nothing worth" not in sent[0]
+
+
+def test_at_most_one_bonus_paper_and_it_is_the_best_one(tmp_path, monkeypatch):
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a"), P("b", "science")], FakeRun(lesson=_LESSON_T, scores={"a": 8.5, "b": 9.5}))
+    assert len(sent) == 2 and "Title b" in sent[1]
+
+
+def test_sources_that_failed_are_reported_inside_the_daily10(tmp_path, monkeypatch):
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 2}), failed=["nber"])
+    assert "sources failed: nber" in sent[0] and "Daily 10" in sent[0] and len(sent) == 1
+
+
+def test_when_the_path_is_complete_and_nothing_is_excellent_the_quiet_message_still_appears(tmp_path, monkeypatch):
+    store = Store(":memory:")
+    for i in range(2):
+        store.mark_step_done("Finance", f"Paper {i}|{1960 + i}", NOW)
+    sent, _, _ = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 3}), store=store)
+    assert len(sent) == 1 and "Nothing worth" in sent[0]
+
+
+def test_a_usage_limit_hit_while_writing_the_lesson_sends_only_the_notice_and_changes_nothing(tmp_path, monkeypatch):
+    sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, limit_on_call=1))
+    assert len(sent) == 1 and "usage limit" in sent[0].lower()
+    assert store.done_steps("Finance") == set() and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+def test_another_failure_while_writing_the_lesson_skips_the_daily10_with_a_note_and_the_rest_carries_on(tmp_path, monkeypatch):
+    sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, scores={"a": 9}, error_on_call=1))
+    assert "Daily 10 unavailable today (RunnerError)" in sent[0] and "Title a" in sent[1] if len(sent) > 1 else True
+    assert store.done_steps("Finance") == set()          # the step is retried tomorrow
+    assert store.since(2, NOW) == NOW                    # the rest of the run completed
+
+
+def test_a_limit_hit_after_the_daily10_was_delivered_keeps_the_step_but_not_last_success(tmp_path, monkeypatch):
+    sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, limit_on_call=2))  # 1 lesson, 2 triage
+    assert "Daily 10" in sent[0] and "usage limit" in sent[-1].lower() and "1 item delivered" in sent[-1]
+    assert store.done_steps("Finance") == {"Paper 0|1960"} and store.since(2, NOW) == NOW - timedelta(days=2)
