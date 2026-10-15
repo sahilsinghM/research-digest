@@ -62,6 +62,11 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False, get_jso
     if foundations:
         try:
             d10 = daily10.prepare(cfg, profile, store, ask, get_json, known, now, notes=notes)
+        except daily10.LessonUnavailable as e:
+            log.warning("Daily 10 lesson unavailable: %s", e.reason)
+            d10 = e.fallback  # a recall-only day, already carrying the reason
+            if d10 is None:
+                notes.append(e.note)  # nothing to recall: the reason rides in the header or quiet message
         except runner.UsageLimitReached as e:
             log.warning("usage limit: %s", e)
             stop = "Claude usage limit reached"

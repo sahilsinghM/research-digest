@@ -575,3 +575,30 @@ def test_a_limit_hit_after_the_daily10_was_delivered_keeps_the_step_but_not_last
     sent, _, store = go2(tmp_path, monkeypatch, [P("a")], FakeRun(lesson=_LESSON_T, limit_on_call=2))  # 1 lesson, 2 triage
     assert "Daily 10" in sent[0] and "usage limit" in sent[-1].lower() and "1 item delivered" in sent[-1]
     assert store.done_steps("Finance") == {"Paper 0|1960"} and store.since(2, NOW) == NOW - timedelta(days=2)
+
+
+# ---- issue 16 in the pipeline ----
+
+import openalex  # noqa: E402
+
+
+def test_a_citation_service_outage_with_cards_due_sends_recall_only_and_reports_the_failure(tmp_path, monkeypatch):
+    _path_dir(tmp_path, monkeypatch)
+    store = Store(":memory:")  # a card from an earlier day; the path is not cached yet
+    store.add_cards("Finance", "Paper 0|1960", [{"q": "Q?", "a": "A."}], NOW.date())
+    down = FakeOpenAlex()
+    down.fail = openalex.OpenAlexError("OpenAlex unavailable")
+    sent = []
+    run(F2, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(P("a")), sent.append, NOW + timedelta(days=1), get_json=down)
+    assert "recall only" in sent[0].lower() and "Q?" in sent[0] and "OpenAlexError" in sent[0]
+    assert store.done_steps("Finance") == set()                       # nothing advanced
+    assert store.since(2, NOW) == NOW + timedelta(days=1)             # the rest of the run completed
+
+
+def test_a_citation_service_outage_with_nothing_to_recall_is_reported_in_the_quiet_message(tmp_path, monkeypatch):
+    _path_dir(tmp_path, monkeypatch)
+    down = FakeOpenAlex()
+    down.fail = openalex.OpenAlexError("OpenAlex unavailable")
+    sent = []
+    run(F2, "profile", Store(":memory:"), FakeRun(lesson=_LESSON_T, scores={"a": 2}), fetch_of(P("a")), sent.append, NOW, get_json=down)
+    assert len(sent) == 1 and "Nothing worth" in sent[0] and "Daily 10 lesson unavailable" in sent[0] and "OpenAlexError" in sent[0]

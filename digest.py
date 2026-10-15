@@ -116,7 +116,7 @@ def daily10_msg(step, lesson, cards, day, total, path_name, notes=()):
         out += ["", f"<b>{n} · Today's idea</b> (5 min)",
                 f"📜 {w.year} · <b>{esc(clip(lesson['headline'] or w.title, 120 * k))}</b>",
                 f"<i>{esc(clip(w.title, 160 * k))}</i>"
-                + (f" · {esc(clip(', '.join(w.authors), 80 * k))}" if w.authors else "") + f" · cited {w.cited_by:,} times"]
+                + (f" · {esc(clip(', '.join(w.authors), 80 * k))}" if w.authors else "") + f" · cited {w.cited_by:,} times in OpenAlex"]
         if lesson["prereads"]:
             out.append("🧠 <b>Pre-read</b>")
             for i, x in enumerate(lesson["prereads"], 1):
@@ -142,5 +142,16 @@ def daily10_msg(step, lesson, cards, day, total, path_name, notes=()):
             out += ["", f"<b>{n} · Your sentence</b> (2 min)", esc(clip(lesson["your_sentence"], 160 * k))]
         out += [f"<i>{esc(clip(x, 300 * k))}</i>" for x in notes]
         return "\n".join(out)
+
+    return _fit(build)
+
+
+def recall_only_msg(cards, note, notes=()):
+    """A day without a lesson (citation service down, or the path finished): just the recall cards and why."""
+    def build(k):
+        out = ["⏱ <b>Daily 10</b> · recall only today", f"<i>{esc(clip(note, 200 * k))}</i>", "", "<b>Recall</b> (1 min)"]
+        for i, c in enumerate(cards, 1):
+            out += [f"{i}. {esc(clip(c['q'], 200 * k))}", f"<tg-spoiler>{esc(clip(c['a'], 200 * k))}</tg-spoiler>"]
+        return "\n".join(out + [f"<i>{esc(clip(x, 300 * k))}</i>" for x in notes])
 
     return _fit(build)

@@ -296,3 +296,17 @@ def test_lesson_is_none_when_unusable():
     assert lesson(FakeRun("junk", "junk"), "m", _step(), "p", []) is None
     assert lesson(FakeRun(json.dumps({"headline": "", "idea": []})), "m", _step(), "p", []) is None
     assert lesson(FakeRun("[1]"), "m", _step(), "p", []) is None
+
+
+def test_lines_where_the_model_makes_its_own_citation_claims_are_dropped():
+    raw = dict(_RAW_LESSON, headline="Cited 90,000 times: a fair price",
+               idea=["Keep this line.", "It has 12,000 citations in finance.", "Cited over 5000 times by others.", "Also keep this."],
+               look_for="Look at the hedge.", your_sentence="Price depends on ___.")
+    out = lesson(FakeRun(json.dumps(raw)), "m", _step(), "p", [])
+    assert out["idea"] == ["Keep this line.", "Also keep this."] and out["headline"] == ""
+    assert out["look_for"] == "Look at the hedge."
+
+
+def test_a_lesson_whose_only_content_made_citation_claims_is_unusable():
+    raw = {"headline": "Cited 5 times", "idea": ["Cited 9,000 times."], "recall": []}
+    assert lesson(FakeRun(json.dumps(raw)), "m", _step(), "p", []) is None

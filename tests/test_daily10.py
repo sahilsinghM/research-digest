@@ -89,8 +89,7 @@ def test_an_unverifiable_entry_is_skipped_with_a_visible_note(tmp_path):
     assert "Day 1 of 3" in d.message and "No Such Paper At All" in d.message and "could not verify" in d.message.lower()
 
 
-def test_prepare_returns_none_when_the_model_gives_nothing_usable_or_the_feature_is_off(tmp_path):
-    assert prepare(tmp_path, Ask("junk")) is None
+def test_prepare_returns_none_when_the_feature_is_off(tmp_path):
     (tmp_path / "p.toml").write_text(PATH)
     cfg = {**CFG, "foundations": {"enabled": False, "path": "p"}}
     assert daily10.prepare(cfg, "profile", Store(":memory:"), Ask("{}"), FakeOpenAlex(), [], NOW, paths_dir=tmp_path) is None
@@ -136,3 +135,97 @@ def test_recall_days_and_the_daily_cap_come_from_config(tmp_path):
     assert "Recall" not in day(1).message
     two = day(2)
     assert two.message.count("<tg-spoiler>") == 1
+
+
+# ---- issue 16: bad days ----
+
+import pytest  # noqa: E402
+
+import openalex  # noqa: E402
+
+
+def _seed_a_card_for_tomorrow(tmp_path, store):
+    prepare(tmp_path, Ask(json.dumps(LESSON)), store=store).commit()
+    return NOW + timedelta(days=1)
+
+
+def _tomorrow(tmp_path, store, api, ask, day):
+    (tmp_path / "p.toml").write_text(PATH)
+    return daily10.prepare(CFG, "profile", store, ask, api, [], day, paths_dir=tmp_path)
+
+
+def test_when_the_citation_service_is_down_the_day_still_delivers_the_recall_cards_and_retries_the_step_tomorrow(tmp_path):
+    store = Store(":memory:")  # a card from an earlier day, but the path is not cached yet
+    store.add_cards("Finance: risk and pricing", "old|1960", [{"q": "Why hedge?", "a": "To remove risk."}], NOW.date())
+    day2 = NOW + timedelta(days=1)
+    api = FakeOpenAlex()
+    api.fail = openalex.OpenAlexError("OpenAlex unavailable after 3 tries (HTTP 503)")
+    with pytest.raises(daily10.LessonUnavailable) as e:
+        _tomorrow(tmp_path, store, api, Ask(json.dumps(LESSON)), day2)
+    assert "OpenAlexError" in e.value.reason
+    fallback = e.value.fallback
+    assert "recall only" in fallback.message.lower() and "Why hedge?" in fallback.message
+    assert "<tg-spoiler>To remove risk.</tg-spoiler>" in fallback.message
+    fallback.commit()
+    assert store.done_steps("Finance: risk and pricing") == set()  # no step was consumed by the outage
+    again = _tomorrow(tmp_path, store, FakeOpenAlex(SHARPE, BS, HESTON), Ask(json.dumps(LESSON)), day2 + timedelta(days=1))
+    assert "Day 1 of 3" in again.message  # the lesson that failed is simply still the next one: the place was not lost
+    assert "Why hedge?" not in again.message  # and the card shown during the outage is not shown twice
+
+
+def test_with_nothing_to_recall_a_service_outage_gives_no_fallback_message(tmp_path):
+    api = FakeOpenAlex()
+    api.fail = openalex.OpenAlexError("down")
+    with pytest.raises(daily10.LessonUnavailable) as e:
+        prepare(tmp_path, Ask("{}"), api=api)
+    assert e.value.fallback is None
+
+
+def test_a_broken_path_file_is_reported_not_a_crash(tmp_path):
+    with pytest.raises(daily10.LessonUnavailable) as e:
+        prepare(tmp_path, Ask("{}"), path="this is = not [valid toml")
+    assert "PathError" in e.value.reason
+
+
+def test_a_lesson_the_model_could_not_write_is_reported_with_the_recall_fallback(tmp_path):
+    store = Store(":memory:")
+    day2 = _seed_a_card_for_tomorrow(tmp_path, store)
+    with pytest.raises(daily10.LessonUnavailable) as e:
+        _tomorrow(tmp_path, store, FakeOpenAlex(SHARPE, BS, HESTON), Ask("junk"), day2)
+    assert "lesson" in e.value.reason.lower() and "Why hedge?" in e.value.fallback.message
+
+
+def test_a_finished_path_still_offers_recall_and_then_goes_quiet(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    day = NOW
+    for _ in range(3):
+        (tmp_path / "p.toml").write_text(PATH)
+        daily10.prepare(CFG, "profile", store, ask, FakeOpenAlex(SHARPE, BS, HESTON), [], day, paths_dir=tmp_path).commit()
+        day += timedelta(days=1)
+    with pytest.raises(daily10.LessonUnavailable) as e:
+        _tomorrow(tmp_path, store, FakeOpenAlex(SHARPE, BS, HESTON), ask, day)
+    assert "complete" in e.value.reason.lower() and "recall only" in e.value.fallback.message.lower()
+    far = NOW + timedelta(days=200)  # overdue cards are offered (capped per day) until each has been shown once
+    for _ in range(5):
+        try:
+            result = _tomorrow(tmp_path, store, FakeOpenAlex(SHARPE, BS, HESTON), ask, far)
+        except daily10.LessonUnavailable as again:
+            again.fallback.commit()
+            continue
+        assert result is None  # then it goes quiet
+        break
+    else:
+        raise AssertionError("recall cards kept coming back forever")
+
+
+def test_citation_counts_are_labelled_as_openalexs_own(tmp_path):
+    assert "cited 19,365 times in OpenAlex" in prepare(tmp_path, Ask(json.dumps(LESSON))).message
+
+
+def test_a_cached_path_survives_a_service_outage_untouched(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    prepare(tmp_path, ask, store=store).commit()
+    down = FakeOpenAlex()
+    down.fail = openalex.OpenAlexError("down")
+    d = _tomorrow(tmp_path, store, down, ask, NOW + timedelta(days=1))
+    assert "Day 2 of 3" in d.message and down.calls == []

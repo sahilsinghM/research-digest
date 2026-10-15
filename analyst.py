@@ -1,6 +1,7 @@
 """Model-facing jobs. `run(model, system, user) -> str` is injected (runner.claude in production)."""
 import json
 import math
+import re
 
 
 class CallCapExceeded(Exception):
@@ -209,6 +210,14 @@ Reply with ONLY a JSON object:
   most 25 words"""
 
 
+_CLAIM = re.compile(r"\b(cited|citations?)\b", re.I)
+
+
+def _no_claims(text):
+    """Citation figures come from the data only: a model line that talks about citations with numbers is dropped."""
+    return "" if _CLAIM.search(text) and re.search(r"\d", text) else text
+
+
 def _lesson_normalise(out, known):
     seen = {k.casefold() for k in known}
     pre = []
@@ -217,11 +226,13 @@ def _lesson_normalise(out, known):
         if term and term.casefold() not in seen:
             seen.add(term.casefold())
             pre.append({"term": term, "plain": _s(x.get("plain")), "example": _s(x.get("example"))})
-    idea = [_s(x) for x in out.get("idea") if _s(x)] if isinstance(out.get("idea"), list) else []
-    recall = [{"q": _s(x.get("q")), "a": _s(x.get("a"))} for x in (out.get("recall") if isinstance(out.get("recall"), list) else [])
-              if isinstance(x, dict) and _s(x.get("q")) and _s(x.get("a"))]
-    result = {"headline": _s(out.get("headline")), "prereads": pre[:2], "idea": idea[:5],
-              "look_for": _s(out.get("look_for")), "your_sentence": _s(out.get("your_sentence")), "recall": recall[:2]}
+    clean = lambda v: _no_claims(_s(v))  # noqa: E731
+    pre = [x for x in pre if not (_no_claims(x["plain"]) != x["plain"] or _no_claims(x["example"]) != x["example"])]
+    idea = [clean(x) for x in out.get("idea") if clean(x)] if isinstance(out.get("idea"), list) else []
+    recall = [{"q": clean(x.get("q")), "a": clean(x.get("a"))} for x in (out.get("recall") if isinstance(out.get("recall"), list) else [])
+              if isinstance(x, dict) and clean(x.get("q")) and clean(x.get("a"))]
+    result = {"headline": clean(out.get("headline")), "prereads": pre[:2], "idea": idea[:5],
+              "look_for": clean(out.get("look_for")), "your_sentence": clean(out.get("your_sentence")), "recall": recall[:2]}
     return result if result["headline"] or result["idea"] else None
 
 
