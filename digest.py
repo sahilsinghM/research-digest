@@ -82,3 +82,65 @@ def teach_msg(t):
         f"🎓 <b>Idea of the day: {esc(clip(t.get('name'), 100 * k))}</b>\n"
         f"{esc(clip(t.get('explain'), 700 * k))}\n"
         f"<blockquote expandable>Example: {esc(clip(t.get('example'), 700 * k))}</blockquote>"))
+
+
+def _link(w):
+    if w.oa_url:
+        return f'<a href="{escape(w.oa_url)}">Free full text</a>'
+    if w.doi_url:
+        return f'<a href="{escape(w.doi_url)}">Publisher page</a>'
+    return ""
+
+
+def _works(label, works, k):
+    if not works:
+        return None
+    items = ", ".join(f"{esc(clip(x.title, 70 * k))} ({x.year})" for x in works)
+    return f"{label} {items}"
+
+
+def daily10_msg(step, lesson, cards, day, total, path_name, notes=()):
+    """The ten-minute session: recall, today's idea, a peek at the source, the reader's own sentence.
+    Years, citation counts and neighbours come from the step's data; only the explanations are model text."""
+    w = step.work
+
+    def build(k):
+        out = [f"⏱ <b>Daily 10</b> · Day {day} of {total} · {esc(clip(path_name, 80 * k))}"]
+        n = 0
+        if cards:
+            n += 1
+            out += ["", f"<b>{n} · Recall</b> (1 min)"]
+            for i, c in enumerate(cards, 1):
+                out += [f"{i}. {esc(clip(c['q'], 200 * k))}", f"<tg-spoiler>{esc(clip(c['a'], 200 * k))}</tg-spoiler>"]
+        n += 1
+        out += ["", f"<b>{n} · Today's idea</b> (5 min)",
+                f"📜 {w.year} · <b>{esc(clip(lesson['headline'] or w.title, 120 * k))}</b>",
+                f"<i>{esc(clip(w.title, 160 * k))}</i>"
+                + (f" · {esc(clip(', '.join(w.authors), 80 * k))}" if w.authors else "") + f" · cited {w.cited_by:,} times"]
+        if lesson["prereads"]:
+            out.append("🧠 <b>Pre-read</b>")
+            for i, x in enumerate(lesson["prereads"], 1):
+                line = f"{i}. <b>{esc(clip(x['term'], 60 * k))}</b>: {esc(clip(x['plain'], 160 * k))}"
+                if x.get("example"):
+                    line += f" <i>{esc(clip(x['example'], 140 * k))}</i>"
+                out.append(line)
+        out += [f"• {esc(clip(line, 160 * k))}" for line in lesson["idea"]]
+        for label, ws in (("⬅️ <b>Built on:</b>", step.built_on), ("➡️ <b>Led to:</b>", step.led_to)):
+            line = _works(label, ws, k)
+            if line:
+                out.append(line)
+        if step.background:
+            out.append("ℹ️ <i>Background knowledge, not from the paper's text. Check the source.</i>")
+        n += 1
+        out += ["", f"<b>{n} · Peek at the source</b> (2 min, optional)"]
+        if lesson["look_for"]:
+            out.append(f"Look for: {esc(clip(lesson['look_for'], 200 * k))}")
+        if _link(w):
+            out.append(_link(w))
+        if lesson["your_sentence"]:
+            n += 1
+            out += ["", f"<b>{n} · Your sentence</b> (2 min)", esc(clip(lesson["your_sentence"], 160 * k))]
+        out += [f"<i>{esc(clip(x, 300 * k))}</i>" for x in notes]
+        return "\n".join(out)
+
+    return _fit(build)

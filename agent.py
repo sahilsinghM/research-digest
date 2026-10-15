@@ -8,8 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import analyst
+import daily10
 import delivery
 import digest
+import openalex
 import runner
 import sources
 from rank import pick, prefilter
@@ -19,7 +21,7 @@ log = logging.getLogger("agent")
 HERE = Path(__file__).parent
 
 
-def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
+def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False, get_json=None):
     """Fetch, score, read, format, send. Delivery state is written only when not a dry run, and
     last-success only when the whole run finished (a usage-limit stop, a mid-run failure or a crash
     leaves it behind so the next run picks the work up)."""
@@ -51,6 +53,10 @@ def run(cfg, profile, store, ask_model, fetch, send, now, dry_run=False):
     ask = analyst.CallCap(ask_model, r["max_calls_per_run"])
     known = store.recent_concepts(200)  # terms already taught (newest first): never explain them again
     done, stop = [], None
+    d10 = daily10.prepare(cfg, profile, store, ask, get_json, known, now) if get_json else None
+    if d10:
+        send(d10.message)
+        known = d10.terms + known
     try:
         scored = analyst.triage(ask, m["triage"], fresh, profile, r["triage_batch"])
         if not dry_run:
@@ -161,7 +167,7 @@ def main(argv=None):
         db = HERE / "state.db"
         store = Store(db if db.exists() or not args.dry_run else ":memory:")
         run(cfg, profile, store, runner.claude, sources.fetch_all, send, datetime.now(timezone.utc),
-            dry_run=args.dry_run)
+            dry_run=args.dry_run, get_json=openalex.http_get_json)
 
     return guarded(job, send)
 

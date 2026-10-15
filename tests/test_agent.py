@@ -18,7 +18,8 @@ CONCEPT = json.dumps({"name": "Drawdown", "explain": "how far a portfolio falls"
 class FakeRun:
     """Answers triage calls from `scores` (default 9) and deep-read calls with ANALYSIS (or queued replies)."""
 
-    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None, error_on_call=None):
+    def __init__(self, *replies, scores=None, concept=CONCEPT, limit_on_call=None, error_on_call=None, lesson=None):
+        self.lesson = lesson
         self.replies, self.scores, self.concept, self.calls = list(replies), scores or {}, concept, []
         self.limit_on_call = limit_on_call  # 1-based index of the call that hits the usage limit
         self.error_on_call = error_on_call  # 1-based index of a call that fails some other way
@@ -31,6 +32,8 @@ class FakeRun:
             raise RunnerError("claude timed out after 300s")
         if "triage" in system.lower():
             return json.dumps([{"id": r["id"], "score": self.scores.get(r["id"], 9)} for r in json.loads(user)])
+        if "study session" in system.lower():
+            return self.lesson
         if "one concept" in system.lower():
             if isinstance(self.concept, Exception):
                 raise self.concept
@@ -38,7 +41,8 @@ class FakeRun:
         return self.replies.pop(0) if self.replies else ANALYSIS
 
     def deep_calls(self):
-        return [c for c in self.calls if "triage" not in c[1].lower() and "one concept" not in c[1].lower()]
+        return [c for c in self.calls if "triage" not in c[1].lower() and "one concept" not in c[1].lower()
+                and "study session" not in c[1].lower()]
 
 
 LONG = "The authors study the question with a stated design and report their main findings in detail. " * 2
@@ -437,3 +441,29 @@ def test_dry_run_records_no_terms():
     store = Store(":memory:")
     go([P("a")], store=store, dry_run=True, fake=FakeRun(_with_prereads("Spread")))
     assert store.recent_concepts() == []
+
+
+# ---- Daily 10 wiring (issue 12) ----
+
+from oa_fixtures import FakeOpenAlex, W  # noqa: E402
+
+_BS = W("W1", "The Pricing of Options and Corporate Liabilities", 1973, 28883, authors=("Fischer Black", "Myron Scholes"))
+_LESSON = json.dumps({"headline": "A fair price for an option", "idea": ["One.", "Two."], "look_for": "the hedge",
+                      "your_sentence": "Price depends on ___.", "prereads": [], "recall": [{"q": "Q?", "a": "A."}]})
+F_CFG = dict(CFG, foundations={"enabled": True, "path": "p"})
+
+
+def test_the_daily10_is_the_first_message_and_uses_the_real_data_shape(tmp_path, monkeypatch):
+    import daily10
+    (tmp_path / "p.toml").write_text('name = "Finance"\n[[step]]\ntitle = "The Pricing of Options and Corporate Liabilities"\n'
+                                     'authors = ["Black"]\nyear = 1973\n')
+    monkeypatch.setattr(daily10, "PATHS_DIR", tmp_path)
+    sent, fake = [], FakeRun(lesson=_LESSON)
+    run(F_CFG, "profile", Store(":memory:"), fake, fetch_of(P("a")), sent.append, NOW, get_json=FakeOpenAlex(_BS))
+    assert "Daily 10" in sent[0] and "A fair price for an option" in sent[0] and "28,883" in sent[0]
+    assert any("Title a" in m for m in sent[1:])
+
+
+def test_without_a_citation_client_the_daily10_is_simply_off():
+    sent, _, _ = go([P("a")])
+    assert not any("Daily 10" in m for m in sent)

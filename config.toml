@@ -10,6 +10,10 @@ max_calls_per_run = 60
 triage = "claude-haiku-5-5"
 analyse = "claude-sonnet-5-5"
 
+[foundations]
+enabled = true
+path = "finance-risk-pricing"
+
 [quota]
 finance = 2
 science = 2

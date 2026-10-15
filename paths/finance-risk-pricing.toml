@@ -1,0 +1,7 @@
+name = "Finance: risk, pricing and behaviour"
+
+[[step]]
+title = "The Pricing of Options and Corporate Liabilities"
+authors = ["Black", "Scholes"]
+year = 1973
+note = "A fair price for an option, from first principles"
