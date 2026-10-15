@@ -505,3 +505,11 @@ def test_a_dry_run_never_advances_the_path(tmp_path, monkeypatch):
     api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
     run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, dry_run=True, get_json=api)
     assert store.done_steps("Finance") == set() and store.recent_concepts() == []
+
+
+def test_a_dry_run_creates_no_recall_cards(tmp_path, monkeypatch):
+    api, store = _path_dir(tmp_path, monkeypatch), Store(":memory:")
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, dry_run=True, get_json=api)
+    assert store.due_cards(NOW.date() + timedelta(days=30), [1, 3, 7, 21], 5) == []
+    run(F_CFG, "profile", store, FakeRun(lesson=_LESSON_T), fetch_of(), lambda t: None, NOW, get_json=api)
+    assert len(store.due_cards(NOW.date() + timedelta(days=1), [1, 3, 7, 21], 5)) == 1

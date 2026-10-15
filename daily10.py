@@ -36,6 +36,14 @@ def prepare(cfg, profile, store, ask, get_json, known_terms, now, paths_dir=None
     if lesson is None:
         return None
     notes = [f"Skipped, could not verify: {e['title']}" for e, _ in flagged]
-    msg = digest.daily10_msg(step, lesson, [], len(steps) - len(todo) + 1, len(steps), name, notes)
+    today = now.date()
+    cards = store.due_cards(today, f.get("recall_days", [1, 3, 7, 21]), f.get("max_recall_per_day", 2))
+    msg = digest.daily10_msg(step, lesson, cards, len(steps) - len(todo) + 1, len(steps), name, notes)
     key = paths.entry_key(step.entry)
-    return Daily10(msg, [t["term"] for t in lesson["prereads"]], lambda: store.mark_step_done(name, key, now))
+
+    def commit():
+        store.mark_step_done(name, key, now)
+        store.add_cards(name, key, lesson["recall"], today)
+        store.mark_cards_shown(cards, today)
+
+    return Daily10(msg, [t["term"] for t in lesson["prereads"]], commit)

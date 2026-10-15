@@ -94,3 +94,45 @@ def test_prepare_returns_none_when_the_model_gives_nothing_usable_or_the_feature
     (tmp_path / "p.toml").write_text(PATH)
     cfg = {**CFG, "foundations": {"enabled": False, "path": "p"}}
     assert daily10.prepare(cfg, "profile", Store(":memory:"), Ask("{}"), FakeOpenAlex(), [], NOW, paths_dir=tmp_path) is None
+
+
+# ---- spaced recall inside the Daily 10 ----
+
+def test_day_one_has_no_recall_and_the_next_day_shows_yesterdays_question_hidden_behind_a_spoiler(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    d1 = prepare(tmp_path, ask, store=store)
+    assert "Recall" not in d1.message
+    d1.commit()
+    (tmp_path / "p.toml").write_text(PATH)
+    d2 = daily10.prepare(CFG, "profile", store, ask, FakeOpenAlex(SHARPE, BS, HESTON), [], NOW + timedelta(days=1), paths_dir=tmp_path)
+    assert "Recall" in d2.message and "Why hedge?" in d2.message and "<tg-spoiler>To remove risk.</tg-spoiler>" in d2.message
+
+
+def test_a_recall_card_is_marked_shown_only_after_the_day_is_delivered(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps(LESSON))
+    prepare(tmp_path, ask, store=store).commit()
+    nxt = NOW + timedelta(days=1)
+
+    def day2():
+        return daily10.prepare(CFG, "profile", store, ask, FakeOpenAlex(SHARPE, BS, HESTON), [], nxt, paths_dir=tmp_path)
+
+    first = day2()
+    assert "Why hedge?" in first.message
+    assert "Why hedge?" in day2().message  # the send failed, nothing committed: it is still due
+    first.commit()
+    assert "Why hedge?" not in day2().message  # delivered: not repeated the same day
+
+
+def test_recall_days_and_the_daily_cap_come_from_config(tmp_path):
+    store, ask = Store(":memory:"), Ask(json.dumps({**LESSON, "recall": [{"q": f"Q{i}", "a": "A"} for i in range(2)]}))
+    prepare(tmp_path, ask, store=store).commit()
+    cfg = {**CFG, "foundations": {**CFG["foundations"], "recall_days": [2], "max_recall_per_day": 1}}
+    (tmp_path / "p.toml").write_text(PATH)
+    api = FakeOpenAlex(SHARPE, BS, HESTON)
+
+    def day(n):
+        return daily10.prepare(cfg, "profile", store, ask, api, [], NOW + timedelta(days=n), paths_dir=tmp_path)
+
+    assert "Recall" not in day(1).message
+    two = day(2)
+    assert two.message.count("<tg-spoiler>") == 1

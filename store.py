@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 SCHEMA = """
 create table if not exists papers(id text primary key, title text, source text, score real, sent integer);
@@ -8,6 +8,8 @@ create table if not exists runs(ts text);
 create table if not exists concepts(name text primary key, taught_at text);
 create table if not exists path_cache(path text, key text, payload text, primary key(path, key));
 create table if not exists path_done(path text, key text, done_at text, primary key(path, key));
+create table if not exists cards(id integer primary key autoincrement, path text, key text, q text, a text, created_on text);
+create table if not exists card_showings(card_id integer, interval integer, shown_on text, primary key(card_id, interval));
 """
 
 
@@ -70,4 +72,28 @@ class Store:
 
     def mark_step_done(self, path, key, when):
         self.db.execute("insert or replace into path_done values (?,?,?)", (path, key, when.isoformat()))
+        self.db.commit()
+
+    def add_cards(self, path, key, cards, created_on):
+        self.db.executemany("insert into cards(path,key,q,a,created_on) values (?,?,?,?,?)",
+                            [(path, key, c["q"], c["a"], created_on.isoformat()) for c in cards])
+        self.db.commit()
+
+    def due_cards(self, today, intervals, limit):
+        """Cards whose 1/3/7/21-day (configurable) moment has come and that were not shown for it yet, earliest due
+        first, at most `limit`. A missed day catches up; overflow waits for tomorrow; nothing is lost."""
+        shown = set(self.db.execute("select card_id, interval from card_showings"))
+        due = []
+        for cid, q, a, created in self.db.execute("select id, q, a, created_on from cards order by id"):
+            made = date.fromisoformat(created)
+            age = (today - made).days
+            ready = [i for i in sorted(intervals) if i <= age and (cid, i) not in shown]
+            if ready:
+                due.append((made + timedelta(days=ready[0]), cid, {"id": cid, "q": q, "a": a, "intervals": ready}))
+        return [c for _, _, c in sorted(due, key=lambda x: (x[0], x[1]))[:limit]]
+
+    def mark_cards_shown(self, cards, today):
+        """Called after delivery. Every overdue interval counts as shown, so a catch-up is not replayed."""
+        self.db.executemany("insert or ignore into card_showings values (?,?,?)",
+                            [(c["id"], i, today.isoformat()) for c in cards for i in c["intervals"]])
         self.db.commit()

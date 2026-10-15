@@ -13,6 +13,8 @@ analyse = "claude-sonnet-5-5"
 [foundations]
 enabled = true
 path = "finance-risk-pricing"
+recall_days = [1, 3, 7, 21]   # old cards return after these many days
+max_recall_per_day = 2
 
 [quota]
 finance = 2

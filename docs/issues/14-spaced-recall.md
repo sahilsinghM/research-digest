@@ -2,7 +2,7 @@
 title: Spaced recall cards
 type: AFK
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Spaced recall cards
@@ -17,12 +17,12 @@ Store each lesson's recall question and answer. Each day show the cards that are
 
 ## Acceptance criteria
 
-- [ ] A card appears exactly 1, 3, 7 and 21 days after it was created, and not on other days
-- [ ] At most two recall cards appear in a day; overflow waits for the next day without being lost
-- [ ] A card is shown once per due date even if the run is repeated the same day
-- [ ] The answer is hidden with spoiler formatting and the question reads fine without the answer
-- [ ] A dry run neither creates nor advances cards
-- [ ] Full test suite passes
+- [x] A card appears exactly 1, 3, 7 and 21 days after it was created, and not on other days
+- [x] At most two recall cards appear in a day; overflow waits for the next day without being lost
+- [x] A card is shown once per due date even if the run is repeated the same day
+- [x] The answer is hidden with spoiler formatting and the question reads fine without the answer
+- [x] A dry run neither creates nor advances cards
+- [x] Full test suite passes
 
 ## Blocked by
 

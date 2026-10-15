@@ -81,3 +81,63 @@ def test_steps_marked_done_are_remembered_per_path_and_marking_twice_is_fine():
     s.mark_step_done("P1", "k|1973", NOW)
     s.mark_step_done("P1", "k|1973", NOW + timedelta(days=1))
     assert s.done_steps("P1") == {"k|1973"} and s.done_steps("P2") == set()
+
+
+# ---- spaced recall cards ----
+
+from datetime import date  # noqa: E402
+
+
+def _simulate(store, days, intervals=(1, 3, 7, 21), limit=2):
+    """Run the daily loop like the pipeline: ask what is due, then (after delivery) mark it shown."""
+    shown = {}
+    d0 = date(2026, 10, 1)
+    for n in range(days + 1):
+        today = d0 + timedelta(days=n)
+        due = store.due_cards(today, list(intervals), limit)
+        for c in due:
+            shown.setdefault(c["q"], []).append(n)
+        store.mark_cards_shown(due, today)
+    return shown
+
+
+def test_a_card_comes_back_exactly_on_days_1_3_7_and_21():
+    s = Store(":memory:")
+    s.add_cards("P", "k", [{"q": "Q1", "a": "A1"}], date(2026, 10, 1))
+    assert _simulate(s, 40) == {"Q1": [1, 3, 7, 21]}
+
+
+def test_nothing_is_due_on_the_day_a_card_is_created():
+    s = Store(":memory:")
+    s.add_cards("P", "k", [{"q": "Q1", "a": "A1"}], date(2026, 10, 1))
+    assert s.due_cards(date(2026, 10, 1), [1, 3, 7, 21], 2) == []
+
+
+def test_at_most_the_cap_per_day_and_overflow_waits_a_day_without_being_lost():
+    s = Store(":memory:")
+    s.add_cards("P", "k", [{"q": f"Q{i}", "a": "A"} for i in range(3)], date(2026, 10, 1))
+    shown = _simulate(s, 3)
+    assert sorted(d for ds in shown.values() for d in ds if d <= 2) == [1, 1, 2]  # two on day 1, the third on day 2
+    assert len(shown) == 3
+
+
+def test_a_card_is_not_repeated_after_it_was_shown_even_if_the_run_repeats_the_same_day():
+    s = Store(":memory:")
+    s.add_cards("P", "k", [{"q": "Q1", "a": "A1"}], date(2026, 10, 1))
+    today = date(2026, 10, 2)
+    due = s.due_cards(today, [1, 3, 7, 21], 2)
+    assert len(due) == 1
+    assert len(s.due_cards(today, [1, 3, 7, 21], 2)) == 1  # not marked yet (e.g. the send failed): still due
+    s.mark_cards_shown(due, today)
+    assert s.due_cards(today, [1, 3, 7, 21], 2) == []
+
+
+def test_missed_days_catch_up_once_without_replaying_every_skipped_interval():
+    s = Store(":memory:")
+    s.add_cards("P", "k", [{"q": "Q1", "a": "A1"}], date(2026, 10, 1))
+    today = date(2026, 10, 10)  # the job did not run for a week: intervals 1, 3 and 7 are all overdue
+    due = s.due_cards(today, [1, 3, 7, 21], 2)
+    assert len(due) == 1
+    s.mark_cards_shown(due, today)
+    assert s.due_cards(date(2026, 10, 11), [1, 3, 7, 21], 2) == []
+    assert len(s.due_cards(date(2026, 10, 22), [1, 3, 7, 21], 2)) == 1  # 21 days after creation
