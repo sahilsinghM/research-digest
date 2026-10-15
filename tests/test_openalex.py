@@ -129,8 +129,10 @@ def test_http_get_json_gives_up_with_a_clear_error_and_does_not_retry_client_err
         openalex.http_get_json("/works", {})
 
 
-def test_resolve_asks_for_the_most_cited_matches_first_so_generic_titles_find_the_canonical_record():
+def test_resolve_searches_in_relevance_order_with_a_wide_page_never_sorted_by_citations():
+    # Sorting a fuzzy text search by citations filled the page with famous but loosely matching papers and pushed
+    # the real one out ("Expected Option Returns" was lost). Relevance order, wide page, strict matching afterwards.
     api = FakeOpenAlex(BS)
     openalex.resolve(api, {"title": BS["display_name"], "authors": ["Black"], "year": 1973})
     params = api.calls[0][1]
-    assert params["sort"] == "cited_by_count:desc" and params["per_page"] >= 20
+    assert "sort" not in params and params["per_page"] >= 20

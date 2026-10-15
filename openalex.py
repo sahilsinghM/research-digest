@@ -71,7 +71,7 @@ def resolve(get_json, entry):
     """Find the original landmark paper for a reading-list entry. Returns (Work, "") or (None, why-not).
     Only a confident match is accepted; reprints and book-chapter copies lose to the original article."""
     title, year, surnames = entry["title"], entry.get("year"), entry.get("authors") or []
-    params = {"search": title, "per_page": 25, "sort": "cited_by_count:desc", "select": FIELDS}
+    params = {"search": title, "per_page": 25, "select": FIELDS}  # relevance order: see tests for why not by citations
     if year:
         params["filter"] = f"publication_year:{year - 1}-{year + 1}"
     works = [parse_work(w) for w in get_json("/works", params).get("results", [])]
