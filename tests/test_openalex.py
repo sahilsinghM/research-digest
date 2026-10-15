@@ -148,3 +148,9 @@ def test_null_fields_from_the_service_never_crash_parsing_or_matching():
     ok["authorships"].append({"author": {"display_name": None}})
     work, _ = openalex.resolve(FakeOpenAlex(ok), {"title": "Some Real Title", "authors": ["Author"], "year": 1990})
     assert work.id == "W78" and work.authors == ["Ann Author"]
+
+
+def test_stray_footnote_asterisks_on_record_titles_are_removed():
+    assert openalex.parse_work(W("W1", "Portfolio Selection*", 1952, 1)).title == "Portfolio Selection"
+    assert openalex.parse_work(W("W2", "Portfolio Selection**", 1952, 1)).title == "Portfolio Selection"
+    assert openalex.parse_work(W("W3", "A* Search Algorithm", 1968, 1)).title == "A* Search Algorithm"  # not at the end

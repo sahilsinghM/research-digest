@@ -43,6 +43,7 @@ def reconstruct_abstract(inv):
 
 def tidy_title(t):
     """Old records are often SHOUTED in capitals; show those in title case."""
+    t = t.rstrip("*† ").strip()  # footnote markers some records carry at the end of the title
     letters = [c for c in t if c.isalpha()]
     return t.title() if letters and sum(c.isupper() for c in letters) / len(letters) > 0.8 else t
 

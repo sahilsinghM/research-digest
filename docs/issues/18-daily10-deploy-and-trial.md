@@ -2,7 +2,7 @@
 title: Deploy the Daily 10 and run a trial
 type: HITL
 label: ready-for-agent
-status: open
+status: in-progress
 ---
 
 # Deploy the Daily 10 and run a trial

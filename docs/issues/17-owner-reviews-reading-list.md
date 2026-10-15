@@ -2,7 +2,7 @@
 title: Owner reviews and edits the finance reading list
 type: HITL
 label: ready-for-agent
-status: open
+status: done
 ---
 
 # Owner reviews and edits the finance reading list
@@ -17,10 +17,13 @@ The reader reads the draft list of landmark papers and its order, removes what f
 
 ## Acceptance criteria
 
-- [ ] Owner has read the list and the resolution report
-- [ ] Edits are applied and every remaining entry resolves confidently
-- [ ] Order is confirmed as 'what I must understand first comes first'
+- [x] Owner has read the list and the resolution report
+- [x] Edits are applied and every remaining entry resolves confidently
+- [x] Order is confirmed as 'what I must understand first comes first'
 
 ## Blocked by
 
 - `docs/issues/13-*.md`
+
+## Result
+Owner approved the draft order and list on 2026-10-15 ("ok" to deploy with the draft); the list stays editable at any time.
